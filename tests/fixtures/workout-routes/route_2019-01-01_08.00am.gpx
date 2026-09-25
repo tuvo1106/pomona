@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Apple Health Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <time>2019-01-01T16:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Route 2019-01-01 08:00am</name>
+    <trkseg>
+      <trkpt lon="-73.9857" lat="40.7484"><ele>5.0</ele><time>2019-01-01T13:00:00Z</time></trkpt>
+      <trkpt lon="-73.9847" lat="40.7490"><ele>5.5</ele><time>2019-01-01T13:00:05Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

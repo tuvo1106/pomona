@@ -1,0 +1,12 @@
+{
+  "resourceType": "Immunization",
+  "id": "imm-1",
+  "status": "completed",
+  "vaccineCode": { "text": "Influenza, seasonal, injectable" },
+  "patient": { "reference": "Patient/patient-1" },
+  "occurrenceDateTime": "2025-10-15T10:00:00-07:00",
+  "lotNumber": "AB1234",
+  "manufacturer": { "display": "Acme Pharma" },
+  "route": { "text": "Intramuscular" },
+  "site": { "text": "Left arm" }
+}

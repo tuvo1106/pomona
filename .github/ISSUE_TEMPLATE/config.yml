@@ -1,0 +1,13 @@
+# Blank issues are off on purpose. Every template carries the same notice -- don't paste your own
+# health data -- and a blank issue is a way to open one having never read it. The "Question or
+# anything else" template exists so that isn't a dead end.
+blank_issues_enabled: false
+
+# Absolute URLs only -- GitHub does not accept repo-relative paths here.
+contact_links:
+  - name: Getting your own data in
+    url: https://github.com/tuvo1106/pomona/blob/main/docs/YOUR-DATA.md
+    about: Exporting from the Health app, what's in the export, and behaviours that look like bugs but aren't.
+  - name: Security report
+    url: https://github.com/tuvo1106/pomona/security/advisories/new
+    about: Report a vulnerability privately rather than in a public issue. See SECURITY.md.

@@ -1,0 +1,344 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/geist';
+
+/* Two arms, matching how the theme is actually applied (see hooks/useTheme.tsx): an explicit
+   dark choice adds .dark to <html>, but the default "system" theme adds no class at all and
+   leans on the prefers-color-scheme media query. Without the second arm, a first-time visitor
+   on a dark-mode OS gets the dark CSS variables but light-mode dark:-gated surfaces.
+
+   Each arm matches the element itself as well as its descendants (`.dark` and `.dark *`, like
+   Tailwind's stock dark variant), so `:root { @variant dark { ... } }` below can use this same
+   variant to set the dark tokens on <html>. */
+@custom-variant dark {
+  &:is(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:is(:root:not(.light), :root:not(.light) *) {
+      @slot;
+    }
+  }
+}
+
+/* Palette: neutrals carry a faint cool tint (hue 270) instead of pure grey, and a single indigo
+   accent (hue 277) marks what's interactive, selected or focused -- --primary for filled
+   controls and active text, --ring for focus, --accent as the pale tint behind a selected or
+   hovered row. Indigo rather than a health-app red/pink on purpose: red is already
+   --destructive (and Atrial Fibrillation's ECG badge), and an accent that close to it would
+   make every ordinary selected or "Sinus Rhythm" state read as a warning.
+
+   Every text/background pairing here meets WCAG AA (4.5:1) in both themes -- re-check the
+   numbers when changing a lightness value, don't eyeball it. */
+:root {
+  /* Deep enough that a white card reads as a card. At the old 0.985 the page and the card
+     were 1.03:1 apart, so ~40 cards floated on a background you couldn't see; 1.10:1 gives
+     them an edge without turning the page grey. --foreground stays 17.4:1 on it and
+     --muted-foreground 5.0:1, both still AA. */
+  --background: oklch(0.968 0.006 270);
+  --foreground: oklch(0.17 0.015 270);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.17 0.015 270);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.17 0.015 270);
+  --primary: oklch(0.5 0.22 277);
+  --primary-foreground: oklch(0.985 0.005 277);
+  /* Stepped down with --background above, not left where they were: these are the surfaces
+     that sit *on* the page rather than in a card -- loading skeletons, the header's nav
+     hover, a hovered table row -- so they have to stay visible against it. At the old 0.965
+     against a 0.968 page they were 1.01:1 apart and the whole loading state went invisible.
+     1.09:1 now, slightly more separation than before the page was deepened. --muted-foreground
+     still clears AA on them (4.60:1). */
+  --secondary: oklch(0.94 0.006 270);
+  --secondary-foreground: oklch(0.21 0.02 270);
+  --muted: oklch(0.94 0.006 270);
+  --muted-foreground: oklch(0.52 0.018 270);
+  --accent: oklch(0.93 0.035 277);
+  --accent-foreground: oklch(0.3 0.1 277);
+  --destructive: oklch(0.577 0.245 27.325);
+  /* A change for the better (e.g. the overview cards' period-over-period deltas); a change
+     for the worse uses --destructive. 5.19:1 on --card here, 9.48:1 in dark. */
+  --positive: oklch(0.52 0.13 150);
+  --border: oklch(0.885 0.012 270);
+  --input: oklch(0.885 0.012 270);
+  --ring: oklch(0.5 0.22 277);
+  --chart-1: oklch(0.65 0.15 250);
+  --chart-2: oklch(0.6 0.15 180);
+  --chart-3: oklch(0.65 0.18 30);
+  --chart-4: oklch(0.6 0.15 300);
+  --chart-5: oklch(0.65 0.15 130);
+  /* One hue per metric group (lib/metricGroups.ts), mirroring the Health app's own category
+     colors so a section here reads as the same thing it is on the phone: Activity orange,
+     Heart pink-red, Mobility blue, Running green, Body purple, Sleep teal, Nutrition mint.
+     Environment & hearing has no Apple counterpart in this set and takes amber, which reads
+     as loudness.
+
+     These are Apple's steps, lightness included, which is a deliberate trade the user made:
+     fidelity to the phone's palette over the 3:1 that WCAG asks of a meaningful graphic.
+     Apple tunes these for white glyphs on a colored chip, so the warm end lands around 2:1
+     on these surfaces -- measured against --background (the darker of the two, and what the
+     section heading's dot sits on): Activity 1.97, Running 1.94, Nutrition 1.98,
+     Environment 2.02, Sleep 2.33; Heart 3.11, Mobility 3.67, Body 3.22 need no help. What
+     makes that safe here is that no chart uses color as its only channel -- the section is
+     named in text above it, the last point carries a printed value, and every chart has a
+     table twin (ExpandableChartCard.tsx). A line whose hue is hard to see is never a value
+     you cannot read.
+
+     Brightening them also helped the colour-blind case a little, because it spread the hues
+     further apart in lightness. Measured all-pairs (not just neighbouring sections), OKLab
+     ΔE x100 under the Viénot 1999 simulation: light protanopia 2.2, deuteranopia 2.5 --
+     against 1.4 / 1.8 for the darkened steps this replaced. Both numbers are low, and that
+     is the honest state of an eight-hue palette: hue is most of what separates these, and
+     hue is what colour blindness takes. What carries identity instead is the section name
+     above the charts, the printed end-of-series value and the table twin -- not the color.
+     Prefer a one-hue lightness ramp (see --activity-heat-* below, 9.0 / 12.9) anywhere a
+     scale has to be read *as* a scale.
+
+     An earlier revision of this comment claimed 7.1 / 5.0 here. Those came from a simulation
+     that applied the Viénot matrices to linear RGB instead of LMS, which inflates every
+     number and mis-ranks the pairs; the figures above are from the corrected one. Re-measure
+     rather than eyeball, and sanity-check the tool on a pair whose answer you know (pure red
+     against pure green must come out as the closest pair under deuteranopia). */
+  --group-activity: oklch(0.77 0.165 62);
+  --group-heart: oklch(0.66 0.19 15);
+  --group-mobility: oklch(0.6 0.19 257);
+  --group-running: oklch(0.745 0.19 140);
+  --group-body: oklch(0.65 0.19 312);
+  --group-sleep: oklch(0.7 0.11 205);
+  --group-environment: oklch(0.75 0.145 95);
+  --group-nutrition: oklch(0.74 0.13 165);
+  /* Uncategorized types fall into an "Other" group, which is deliberately neutral rather
+     than a ninth hue: a hue would claim a kinship these metrics don't have. Being neutral,
+     it has no chroma to separate with, so lightness carries the whole job and it sits
+     outside the band the eight hues keep to -- far enough from --muted-foreground (the axis
+     ink, ΔL 0.14) that the series doesn't melt into the chart's own chrome, and from
+     Nutrition, which `groupsWithUnknownTypes` renders immediately above it. */
+  --group-other: oklch(0.38 0.02 270);
+  /* Systolic and diastolic share one chart, so this pair has to separate on its own. Both
+     stay in the Heart family; lightness does the work. ΔE 20.8 light / 15.3 dark under
+     simulated protanopia, 20.5 / 15.3 normal. */
+  --bp-systolic: oklch(0.66 0.19 15);
+  --bp-diastolic: oklch(0.47 0.19 335);
+  /* Route tracks by activity (components/RoutesMap.tsx), previously hard-coded Tailwind hex
+     in lib/routeActivity.ts. Tokens so the two places that draw a route -- the polyline and
+     the list's dot -- can't drift, and so dark mode can have its own steps.
+
+     These sit on map tiles, not on --card, which is the hard part: the basemap is pale grey
+     and beige in light mode and a filtered near-black in dark (RoutesMap.css), and a track
+     crosses both within a few pixels. Contrast against a surface is therefore the wrong
+     measure; every line instead gets a casing drawn underneath it (--route-casing), which
+     is what actually keeps it legible, so these only have to separate from *each other*.
+
+     Running against Walking is the pair to worry about -- orange against green is the
+     red-green axis, and hue alone leaves them about 7 apart under simulated protanopia.
+     Lightness is what rescues it, so the four are spread across a wide lightness range
+     rather than sitting at one "mid-tone" step, and the neutral is placed as deliberately
+     as the hues: it's a grey against three colours, so it can only separate by lightness,
+     and it ends up being the pair that binds. Worst all-pairs OKLab ΔE x100 under the
+     Viénot 1999 simulation: 15.4 light / 20.5 dark against protanopia, 16.4 / 15.6 against
+     deuteranopia (22.8 / 20.8 for normal vision).
+
+     Chroma is capped at the sRGB gamut boundary for each hue and lightness. An oklch()
+     outside the gamut is clamped by the browser, so the colour on screen would not be the
+     colour that was measured -- and the first draft of these tokens had exactly that, a
+     running orange a tenth of a unit past the boundary.
+
+     Activity is also named in the list beside its dot, so colour is never the only channel.
+     Simulation applied in LMS, sanity-checked the way --group-* above describes. */
+  --route-running: oklch(0.64 0.184 42);
+  --route-walking: oklch(0.8 0.17 150);
+  --route-cycling: oklch(0.6 0.2 258);
+  --route-other: oklch(0.46 0.02 270);
+  /* Drawn under every track, wider, so a line stays readable where it crosses map features
+     that would otherwise swallow it. One value for both themes, which looks wrong until you
+     ask what it is separating in each: on the pale light basemap it is the track from the
+     map (15.8:1 against OSM land), and on the near-black dark basemap the bright tracks
+     already separate from the map on their own, so the casing's remaining job is keeping
+     overlapping tracks apart from *each other* -- which a dark line does from between them.
+     Every track clears 2.5:1 against it in both arms. */
+  --route-casing: oklch(0.2 0.01 270);
+  /* Daily-activity rings and their calendar heatmap (components/ActivityRings.tsx). Their
+     own tokens rather than the group hues: the three rings are a fixed trio, and the heatmap
+     needs a 4-step ramp of the Move hue.
+
+     Apple's own red / green / cyan, at the user's request -- these are the three colors the
+     rings mean, and a health app that recolors them is fighting the reference. Red against
+     green is exactly the pair that collapses under deuteranopia, so it is rebuilt on a
+     second channel: the trio is separated by lightness as well as hue (Move 0.69, Exercise
+     0.60, Stand 0.65 light), giving worst all-pairs ΔE 10.6 light / 10.4 dark under
+     simulated protanopia and deuteranopia -- above the validator's target of 8, where the
+     naive Apple steps score 1.3. Identity never rests on color alone regardless: every ring
+     is labelled in the legend, and a closed day carries a dot in the heatmap, not just a
+     darker cell. */
+  --activity-move: oklch(0.69 0.2 15);
+  --activity-exercise: oklch(0.6 0.193 140);
+  --activity-stand: oklch(0.65 0.111 200);
+  /* The calendar ramp: green, faint for a little and deep for a lot, the way a contribution
+     graph reads. It shades Move goal completion, so it used to run in the Move ring's red --
+     which made the calendar redder the better the day had gone, backwards in an app where
+     red is the warning color everywhere else.
+
+     Green is also the safer ramp, not just the friendlier one. A single hue separates its
+     steps by lightness, and lightness is the channel colour blindness leaves intact: worst
+     adjacent-pair ΔE x100 under the Viénot 1999 simulation is 9.0 light / 12.9 dark against
+     protanopia and deuteranopia, where the eight multi-hue group colors manage 2.2 / 2.5.
+     Steps are taken from GitHub's contribution palette and re-tuned for these surfaces
+     rather than copied: their dark end sat too close to --muted, so an empty day and a
+     barely-active one differed by less than the ramp's own smallest step.
+
+     Light runs faint->deep; dark runs the other way, so "more" is always the strongest step
+     against its own surface. An empty cell is not part of the ramp at all -- it takes --muted
+     and a border, which is what tells "no data" from "a little" without relying on color. */
+  --activity-heat-1: oklch(0.855 0.1 150);
+  --activity-heat-2: oklch(0.73 0.175 147);
+  --activity-heat-3: oklch(0.615 0.155 148);
+  --activity-heat-4: oklch(0.47 0.115 150);
+  /* The ECG chart's paper grid (components/EcgWaveformChart.tsx). Real ECG paper is printed
+     in red-pink at two weights -- a 1mm mesh with every fifth line heavier -- and the
+     intervals are the point: they're what lets a QRS width or an ST segment be *measured*
+     off the trace rather than just looked at.
+
+     Measured against --background, which is what the ECG panel sits on (it has no --card
+     surface of its own). These are the faintest tokens in the file by design: a grid that
+     competes with the trace defeats itself, and the trace is --foreground at 17.4:1 light /
+     18.2:1 dark, two orders of emphasis above. Minor 1.25:1 light / 1.31:1 dark, major
+     1.77:1 / 1.88:1 -- for scale, --border is 1.29:1 on the light page, so a minor line is
+     about as present as the app's own hairlines and a major one is clearly the heavier
+     fifth. The ratio between the two weights is ~1.4x in both arms, so the fifth-line
+     emphasis reads the same either way.
+
+     Hue 20 rather than --destructive's 27 on purpose: this mesh is not a warning, and it
+     shares a chart with the Atrial Fibrillation badge, which is. Contrast is the only
+     requirement here -- a grid line is decoration, never the sole carrier of a value, and
+     the axes print the same numbers in text. Both are inside the sRGB gamut; an oklch()
+     past the boundary is clamped by the browser, so the rendered colour would stop being
+     the measured one. */
+  --ecg-grid-minor: oklch(0.9 0.05 20);
+  --ecg-grid-major: oklch(0.8 0.1 20);
+  --radius: 0.625rem;
+
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Declared once and emitted for both dark arms by the variant above, so an explicit dark
+     choice and a dark OS preference can't drift apart the way two hand-copied blocks did. */
+  @variant dark {
+    --background: oklch(0.155 0.008 270);
+    --foreground: oklch(0.975 0.004 270);
+    --card: oklch(0.205 0.01 270);
+    --card-foreground: oklch(0.975 0.004 270);
+    --popover: oklch(0.205 0.01 270);
+    --popover-foreground: oklch(0.975 0.004 270);
+    --primary: oklch(0.72 0.15 277);
+    --primary-foreground: oklch(0.2 0.04 277);
+    --secondary: oklch(0.27 0.012 270);
+    --secondary-foreground: oklch(0.975 0.004 270);
+    --muted: oklch(0.27 0.012 270);
+    --muted-foreground: oklch(0.72 0.016 270);
+    --accent: oklch(0.3 0.06 277);
+    --accent-foreground: oklch(0.975 0.01 277);
+    --destructive: oklch(0.704 0.191 22.216);
+    --positive: oklch(0.78 0.15 150);
+    --border: oklch(1 0 0 / 14%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.72 0.15 277);
+    --chart-1: oklch(0.72 0.15 250);
+    --chart-2: oklch(0.68 0.15 180);
+    --chart-3: oklch(0.72 0.18 30);
+    --chart-4: oklch(0.68 0.15 300);
+    --chart-5: oklch(0.72 0.15 130);
+    /* Same hues as light, re-stepped for the dark card rather than flipped: a dark surface
+       needs more lightness for the same contrast, which crowds the steps toward the top of
+       the band, so Activity keeps the darker step that holds it apart from Heart. */
+    --group-activity: oklch(0.58 0.134 62);
+    --group-heart: oklch(0.665 0.19 15);
+    --group-mobility: oklch(0.635 0.19 257);
+    --group-running: oklch(0.61 0.19 140);
+    --group-body: oklch(0.66 0.19 312);
+    --group-sleep: oklch(0.665 0.114 205);
+    --group-environment: oklch(0.665 0.137 95);
+    --group-nutrition: oklch(0.665 0.14 165);
+    /* Lighter than the hues rather than darker, for the same reason the light arm goes
+       darker: the neutral needs lightness to do what chroma does for the others. */
+    --group-other: oklch(0.82 0.02 270);
+    --bp-systolic: oklch(0.665 0.19 15);
+    --bp-diastolic: oklch(0.585 0.19 335);
+    /* Lifted for the darkened basemap, keeping the hues' order (walking lightest, cycling
+       darkest) so a route doesn't change rank when the theme flips. The neutral is the one
+       that crosses over -- lightest here, darkest in the light arm -- because it has no
+       chroma to be found by and has to take whichever end of the range the hues leave free.
+       --route-casing is deliberately not redefined here; see its comment above. */
+    --route-running: oklch(0.62 0.178 42);
+    --route-walking: oklch(0.82 0.17 150);
+    --route-cycling: oklch(0.54 0.19 258);
+    --route-other: oklch(0.7 0.02 270);
+    /* Selected for the dark surface, not flipped from the light values: the ramp runs
+       dark->light here so "more" is still the strongest step against a dark card. */
+    --activity-move: oklch(0.665 0.2 15);
+    --activity-exercise: oklch(0.58 0.187 140);
+    --activity-stand: oklch(0.665 0.113 200);
+    --activity-heat-1: oklch(0.4 0.09 152);
+    --activity-heat-2: oklch(0.53 0.135 150);
+    --activity-heat-3: oklch(0.66 0.165 146);
+    --activity-heat-4: oklch(0.79 0.19 145);
+    /* Darker than the light arm rather than lighter, unlike most of the tokens above: the
+       grid has to sit *under* the trace in both themes, and on a dark page that means a
+       dim line, not a bright one. Same hue, same two weights, re-measured for this
+       background -- see the light arm for the numbers. */
+    --ecg-grid-minor: oklch(0.28 0.05 20);
+    --ecg-grid-major: oklch(0.38 0.08 20);
+  }
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', sans-serif;
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-positive: var(--positive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+  }
+  html {
+    @apply font-sans;
+  }
+}

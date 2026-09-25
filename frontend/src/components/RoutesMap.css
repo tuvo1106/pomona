@@ -1,0 +1,111 @@
+/* Dark-theme basemap, see the TILE_LAYER comment in RoutesMap.tsx for why this is a CSS
+   filter over the light OSM tiles rather than a separate dark tile source.
+
+   Scoped to the tile pane only: the route polylines live in the overlay pane and popups in
+   the popup pane, so activity colors and popup text keep their real values.
+   invert + hue-rotate(180deg) flips lightness while roughly preserving hue (water stays
+   blue, parks stay green); the rest pulls the result down from a harsh inverted white
+   toward the app's own dark surfaces.
+
+   This assumes a light tile source, which the default is. A build that points VITE_TILE_URL
+   at an already-dark style gets it inverted back to a light basemap here -- documented in
+   frontend/.env.example rather than detected, since there is nothing in a tile URL that says
+   what the tiles look like. */
+.routes-map-dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(0.35);
+}
+
+/* The surface behind the tiles: visible before they load, around the edges of the world at
+   low zoom, and -- since the basemap is off until asked for (see useBasemapEnabled) -- for
+   most of this map's life. Leaflet's default is a light grey that flashes on a dark page and
+   reads as a failed load on a light one; the app's own muted surface reads as a canvas. */
+.leaflet-container {
+  background: var(--muted);
+}
+
+.routes-map-dark .leaflet-container {
+  background: var(--background);
+}
+
+.routes-map-dark .leaflet-bar a,
+.routes-map-dark .leaflet-bar a:hover {
+  background-color: var(--card);
+  color: var(--foreground);
+  border-bottom-color: var(--border);
+}
+
+.routes-map-dark .leaflet-bar a:hover {
+  background-color: var(--muted);
+}
+
+.routes-map-dark .leaflet-bar a.leaflet-disabled {
+  background-color: var(--card);
+  color: var(--muted-foreground);
+}
+
+.routes-map-dark .leaflet-bar {
+  border-color: var(--border);
+}
+
+.routes-map-dark .leaflet-control-attribution {
+  background: color-mix(in oklch, var(--card) 80%, transparent);
+  color: var(--muted-foreground);
+}
+
+.routes-map-dark .leaflet-control-attribution a {
+  color: var(--foreground);
+}
+
+.routes-map-dark .leaflet-popup-content-wrapper,
+.routes-map-dark .leaflet-popup-tip {
+  background: var(--popover);
+  color: var(--popover-foreground);
+}
+
+/* Route colours. Leaflet writes stroke/fill with setAttribute, so these author rules win
+   over whatever it put on the element -- which is the point: a presentation attribute can't
+   hold a var(), a CSS declaration can, and the token then follows the theme by itself.
+
+   Each activity class only names the colour; every layer of a route (casing, track, the two
+   endpoint dots) reads the same --route-color and decides whether it's a stroke or a fill.
+   The class names come from lib/routeActivity.ts. */
+.route-running {
+  --route-color: var(--route-running);
+}
+
+.route-walking {
+  --route-color: var(--route-walking);
+}
+
+.route-cycling {
+  --route-color: var(--route-cycling);
+}
+
+.route-other {
+  --route-color: var(--route-other);
+}
+
+.route-track {
+  stroke: var(--route-color);
+}
+
+/* Drawn wider and underneath, so what you see of it is an outline around the track. */
+.route-casing {
+  stroke: var(--route-casing);
+}
+
+/* Start filled in the route's colour, end a larger hollow ring around it (RoutesMap.tsx
+   sizes and orders them). Shape rather than a second pair of colours, which would then have
+   to be told apart from the activity colours. The ring's fill is the casing colour rather
+   than transparent, so the map underneath doesn't read as part of the marker -- these rules
+   set which colour the fill is, and RoutesMap.tsx sets how opaque, since Leaflet's own
+   default (0.2) is an attribute a `fill` declaration doesn't touch. */
+.route-start {
+  fill: var(--route-color);
+  stroke: var(--route-casing);
+}
+
+.route-end {
+  fill: var(--route-casing);
+  stroke: var(--route-color);
+}

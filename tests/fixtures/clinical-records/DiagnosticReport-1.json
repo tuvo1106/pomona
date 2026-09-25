@@ -1,0 +1,11 @@
+{
+  "resourceType": "DiagnosticReport",
+  "id": "diag-1",
+  "status": "final",
+  "code": { "text": "TSH", "coding": [{ "system": "http://loinc.org", "code": "3016-3" }] },
+  "subject": { "reference": "Patient/patient-1" },
+  "effectiveDateTime": "2025-06-01T09:00:00-07:00",
+  "issued": "2025-06-02T08:00:00-07:00",
+  "identifier": [{ "system": "urn:placer", "value": "PL-1001" }],
+  "result": [{ "reference": "Observation/obs-1" }]
+}

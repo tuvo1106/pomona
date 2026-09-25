@@ -1,0 +1,11 @@
+{
+  "resourceType": "Procedure",
+  "id": "procedure-1",
+  "status": "completed",
+  "code": {
+    "text": "Routine health examination",
+    "coding": [{ "system": "http://snomed.info/sct", "code": "185349003" }]
+  },
+  "subject": { "reference": "Patient/patient-1" },
+  "performedDateTime": "2018-04-10"
+}

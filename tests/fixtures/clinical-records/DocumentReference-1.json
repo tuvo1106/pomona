@@ -1,0 +1,16 @@
+{
+  "resourceType": "DocumentReference",
+  "id": "docref-1",
+  "status": "current",
+  "docStatus": "final",
+  "type": {
+    "text": "Progress Notes",
+    "coding": [{ "system": "http://loinc.org", "code": "11506-3" }]
+  },
+  "subject": { "reference": "Patient/patient-1" },
+  "date": "2025-06-01T09:00:00-07:00",
+  "context": { "encounter": [{ "reference": "Encounter/enc-1" }] },
+  "content": [
+    { "attachment": { "contentType": "application/xml", "url": "Binary/bin-1" } }
+  ]
+}

@@ -1,0 +1,35 @@
+.DS_Store
+*.pem
+*.key
+credentials/
+
+.env*
+!.env.example
+
+# Apple Health export data (large, personal)
+apple_health_export/
+
+# The synthetic export from scripts/make_demo_export.py. Generated, not authored: ~15MB of XML
+# and a hundred-odd GPX tracks, reproducible from a fixed seed in under a second, so there is
+# nothing to gain by carrying it here.
+demo_health_export/
+
+# Somewhere to keep your own notes next to the code without committing them.
+notes/
+
+# Local database
+*.db
+*.db-wal
+*.db-shm
+data/*.db
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

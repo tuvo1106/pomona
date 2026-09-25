@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- iOS ignores an SVG here, so the home-screen icon is a PNG (see icons/render.py).
+         theme-color is set at runtime from the resolved theme, not here, because the app's
+         own Light/Dark/System toggle can disagree with the OS. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pomona</title>
+    <script>
+      // Applied before React mounts to avoid a flash of the wrong theme on load.
+      try {
+        var theme = localStorage.getItem('pomona-theme');
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.classList.add(theme);
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "resourceType": "Observation",
+  "id": "obs-1",
+  "status": "final",
+  "category": [{ "text": "Laboratory" }],
+  "code": {
+    "text": "LDL CALCULATED",
+    "coding": [{ "system": "http://loinc.org", "code": "13457-7", "display": "LDL Cholesterol" }]
+  },
+  "subject": { "reference": "Patient/patient-1" },
+  "effectiveDateTime": "2025-06-01T09:00:00-07:00",
+  "issued": "2025-06-01T12:00:00-07:00",
+  "valueQuantity": { "value": 95, "unit": "mg/dL", "system": "http://unitsofmeasure.org", "code": "mg/dL" },
+  "referenceRange": [
+    {
+      "low": { "value": 0, "unit": "mg/dL" },
+      "high": { "value": 99, "unit": "mg/dL" },
+      "text": "0-99 mg/dL"
+    }
+  ]
+}

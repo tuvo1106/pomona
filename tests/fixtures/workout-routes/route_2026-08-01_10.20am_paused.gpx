@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Apple Health Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Route with a pause -- two disconnected segments</name>
+    <trkseg>
+      <trkpt lon="-122.5000" lat="37.8000"><time>2026-08-01T17:05:00Z</time></trkpt>
+      <trkpt lon="-122.5010" lat="37.8010"><time>2026-08-01T17:05:30Z</time></trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lon="-122.6000" lat="37.9000"><time>2026-08-01T17:20:00Z</time></trkpt>
+      <trkpt lon="-122.6010" lat="37.9010"><time>2026-08-01T17:20:30Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
