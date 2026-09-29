@@ -2,7 +2,7 @@
 
 It lives here rather than in `ingest/clinical_loader.py` because the API has to apply the
 same policy and the API layer doesn't import from `ingest` -- it reads from `db`, `dedup`,
-`metrics` and `waveform`, all top-level like this one. A copy in each place would be the
+`fhir`, `metrics` and `waveform`, all top-level like this one. A copy in each place would be the
 failure this module exists to prevent: see ADR-0005.
 """
 

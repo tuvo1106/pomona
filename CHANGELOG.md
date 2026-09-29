@@ -37,6 +37,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Two clinical records with the same type and id each keep their own values.** Previously both
   were stored with the second file's code, value and status, so a lab result could show another
   record's value. No schema change, so no need to delete your database.
+- **One odd clinical record can no longer take down the clinical page or the ingest.** A value
+  or range bound too large to hold (`1e999`, or an integer hundreds of digits long) is now left
+  empty. Before, the first made the whole clinical page fail to load and the second aborted the
+  ingest. A record nested deeply enough to overflow the parser no longer breaks the page either.
+  No need to delete your database or re-ingest.
+- **Reference ranges and blood-pressure-style panels display more safely.** A range unit that
+  isn't text is ignored rather than shown as `[object Object]`, which also silently stopped the
+  result from being flagged. A panel part with no label and no value is dropped instead of shown
+  as a blank part.
 
 ## [0.1.0] - 2026-09-25
 

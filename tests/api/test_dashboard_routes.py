@@ -521,41 +521,6 @@ class TestClinical:
         assert all(row["reference_range"] is None for row in others)
         assert all("raw_json" not in row for row in body)
 
-
-class TestReferenceRangeParsing:
-    @pytest.mark.parametrize(
-        ("resource", "expected"),
-        [
-            ({}, None),
-            ({"referenceRange": []}, None),
-            ({"referenceRange": [{}]}, None),
-            (
-                {"referenceRange": [{"text": "Negative"}]},
-                {"low": None, "high": None, "unit": None, "text": "Negative"},
-            ),
-            (
-                {"referenceRange": [{"low": {"value": 3.5, "unit": "g/dL"}}]},
-                {"low": 3.5, "high": None, "unit": "g/dL", "text": None},
-            ),
-            (
-                {"referenceRange": [{"high": {"value": "<200"}, "text": "<200"}]},
-                {"low": None, "high": None, "unit": None, "text": "<200"},
-            ),
-            ({"referenceRange": [{"low": {"value": True}}]}, None),
-            ({"referenceRange": {"low": {"value": 1}}}, None),
-        ],
-    )
-    def test_flattens_first_range(self, resource, expected):
-        assert dashboard._reference_range(resource) == expected
-
-    def test_malformed_json_is_none(self):
-        # Both range and component parsing go through _resource, which is where a stored
-        # payload that isn't a JSON object stops being anyone's problem.
-        assert dashboard._resource("not json") is None
-        assert dashboard._resource("[]") is None
-        assert dashboard._resource(None) is None
-        assert dashboard._reference_range(None) is None
-
     def test_diagnostic_report_includes_resolved_results(self, client):
         response = client.get("/api/clinical?resource_type=DiagnosticReport")
         body = response.json()
@@ -569,6 +534,23 @@ class TestReferenceRangeParsing:
                 "value_text": None,
                 "status": "final",
             }
+        ]
+
+    def test_non_finite_numbers_in_stored_results_read_as_null(self, client, seeded_db_path):
+        # What a database ingested before the loader dropped them can hold: json.dumps writes
+        # inf and NaN as these bare words, and the response can't encode them.
+        conn = db_module.connect(seeded_db_path, isolation_level=None)
+        conn.execute(
+            "UPDATE clinical_records SET results_json = ? WHERE resource_type = 'DiagnosticReport'",
+            ['[{"value_num": Infinity}, {"value_num": NaN}, {"value_num": 95}]'],
+        )
+        checkpoint_and_close(conn)
+        response = client.get("/api/clinical?resource_type=DiagnosticReport")
+        assert response.status_code == 200
+        assert response.json()[0]["results"] == [
+            {"value_num": None},
+            {"value_num": None},
+            {"value_num": 95},
         ]
 
 
@@ -750,25 +732,6 @@ class TestObservationComponents:
                 "reference_range": None,
             }
         ]
-
-    @pytest.mark.parametrize(
-        "resource",
-        [
-            {},
-            {"component": []},
-            {"component": {}},
-            {"component": "systolic"},
-            {"component": [{}]},
-            {"component": [{"code": {}, "valueQuantity": {"value": None}}]},
-            {"component": [{"code": {"coding": 7}}]},
-        ],
-    )
-    def test_shapes_with_nothing_to_show_are_none(self, resource):
-        assert dashboard._components(resource) is None
-
-    def test_an_unparseable_resource_is_none(self):
-        assert dashboard._components(dashboard._resource("not json")) is None
-        assert dashboard._components(None) is None
 
 
 class TestOverview:
