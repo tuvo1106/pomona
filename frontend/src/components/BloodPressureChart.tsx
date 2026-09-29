@@ -18,7 +18,7 @@ import {
 import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { displayMean, seriesStats, type StatEntry } from '@/lib/seriesStats'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 
 // Stable fallback so the memos below don't recompute on every render while loading.
 const NO_POINTS: BloodPressurePoint[] = []
@@ -35,7 +35,7 @@ export function BloodPressureChart({
   bucket: dashboardBucket,
 }: {
   range: DateRange
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
 }) {
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog

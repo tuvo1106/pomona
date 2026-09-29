@@ -16,6 +16,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   silently left out. No schema change, so no need to delete your database.
 - **"This year" range** — calendar year to date, alongside the rolling "Last year".
 
+### Removed
+
+- **The `daily_resting_hr` and `daily_weight` SQL views.** Nothing in the app read them. Your next
+  `pomona ingest` drops them from an existing database; no table changed, so you don't need to
+  delete it.
+
 ### Fixed
 
 - **A malformed clinical record no longer aborts the whole ingest.** One bad file in

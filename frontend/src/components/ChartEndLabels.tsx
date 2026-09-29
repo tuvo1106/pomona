@@ -6,7 +6,7 @@ import { formatAxisNumber } from '@/lib/formatNumber'
  * calls out directly as chaos that goes unread. These are recharts custom dot/label render
  * props -- called once per data point, and only draw anything at `labelIndex`. That's
  * normally the last point; a series with a partial last bucket passes the last *complete*
- * one instead (see lib/partialBuckets.ts), since the partial value is the misleading one.
+ * one instead (see lib/partialBuckets), since the partial value is the misleading one.
  */
 
 interface DotProps {

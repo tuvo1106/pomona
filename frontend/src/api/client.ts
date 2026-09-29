@@ -1,7 +1,4 @@
-export interface DateRangeParams {
-  start?: string
-  end?: string
-}
+import type { Bucket, DateRange } from '@/lib/timeRange'
 
 export interface MetricTypeInfo {
   type: string
@@ -26,7 +23,7 @@ export interface TimeseriesPoint {
 export interface TimeseriesResponse {
   metric_type: string
   unit: string | null
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   // Only present on /api/metrics/{type}/timeseries (quantity metrics). Category-metric
   // timeseries are always rendered as bars, which must stay zero-baselined regardless.
   aggregation_mode?: 'sum' | 'avg'
@@ -39,7 +36,7 @@ export interface SleepPoint {
 }
 
 export interface SleepResponse {
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   points: SleepPoint[]
 }
 
@@ -50,7 +47,7 @@ export interface BloodPressurePoint {
 }
 
 export interface BloodPressureResponse {
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   points: BloodPressurePoint[]
 }
 
@@ -282,12 +279,12 @@ async function getJSON<T>(path: string): Promise<T> {
 export const api = {
   meta: () => getJSON<DataMeta>('/api/meta'),
 
-  metricTypes: (params: DateRangeParams = {}) =>
+  metricTypes: (params: DateRange = {}) =>
     getJSON<MetricTypeInfo[]>(`/api/metric-types${buildQuery(params)}`),
 
   metricTimeseries: (
     metricType: string,
-    params: DateRangeParams & { bucket?: string } = {},
+    params: DateRange & { bucket?: Bucket } = {},
   ) =>
     getJSON<TimeseriesResponse>(
       `/api/metrics/${encodeURIComponent(metricType)}/timeseries${buildQuery(params)}`,
@@ -296,41 +293,41 @@ export const api = {
   categoryMetricTimeseries: (
     metricType: string,
     mode: CategoryMetricMode,
-    params: DateRangeParams & { bucket?: string; value_prefix?: string } = {},
+    params: DateRange & { bucket?: Bucket; value_prefix?: string } = {},
   ) =>
     getJSON<TimeseriesResponse>(
       `/api/category-metrics/${encodeURIComponent(metricType)}/timeseries${buildQuery({ ...params, mode })}`,
     ),
 
-  sleep: (params: DateRangeParams & { bucket?: string } = {}) =>
+  sleep: (params: DateRange & { bucket?: Bucket } = {}) =>
     getJSON<SleepResponse>(`/api/sleep${buildQuery(params)}`),
 
-  bloodPressure: (params: DateRangeParams & { bucket?: string } = {}) =>
+  bloodPressure: (params: DateRange & { bucket?: Bucket } = {}) =>
     getJSON<BloodPressureResponse>(`/api/blood-pressure${buildQuery(params)}`),
 
   workouts: (
-    params: DateRangeParams & { activity_type?: string; limit?: number; offset?: number } = {},
+    params: DateRange & { activity_type?: string; limit?: number; offset?: number } = {},
   ) => getJSON<Workout[]>(`/api/workouts${buildQuery(params)}`),
 
-  workoutsSummary: (params: DateRangeParams = {}) =>
+  workoutsSummary: (params: DateRange = {}) =>
     getJSON<WorkoutTypeSummary[]>(`/api/workouts/summary${buildQuery(params)}`),
 
-  runningMileage: (params: DateRangeParams = {}) =>
+  runningMileage: (params: DateRange = {}) =>
     getJSON<RunningMileage>(`/api/workouts/running${buildQuery(params)}`),
 
-  activitySummary: (params: DateRangeParams = {}) =>
+  activitySummary: (params: DateRange = {}) =>
     getJSON<ActivitySummary[]>(`/api/activity-summary${buildQuery(params)}`),
 
-  clinical: (params: DateRangeParams & { resource_type?: string } = {}) =>
+  clinical: (params: DateRange & { resource_type?: string } = {}) =>
     getJSON<ClinicalRecord[]>(`/api/clinical${buildQuery(params)}`),
 
-  overview: (params: DateRangeParams = {}) =>
+  overview: (params: DateRange = {}) =>
     getJSON<Overview>(`/api/overview${buildQuery(params)}`),
 
-  routes: (params: DateRangeParams = {}) =>
+  routes: (params: DateRange = {}) =>
     getJSON<WorkoutRoute[]>(`/api/routes${buildQuery(params)}`),
 
-  ecgRecordings: (params: DateRangeParams = {}) =>
+  ecgRecordings: (params: DateRange = {}) =>
     getJSON<EcgRecording[]>(`/api/ecg${buildQuery(params)}`),
 
   ecgRecording: (id: number, params: { max_points?: number } = {}) =>

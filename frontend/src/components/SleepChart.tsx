@@ -19,7 +19,7 @@ import {
 import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 
 // Stable fallback so the memos below don't recompute on every render while loading.
 const NO_POINTS: SleepPoint[] = []
@@ -30,7 +30,7 @@ export function SleepChart({
   color = 'var(--chart-2)',
 }: {
   range: DateRange
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   /** The metric group's hue (see MetricGroup.color). Defaults to the generic chart
    * color for a chart rendered outside a group. */
   color?: string

@@ -1,3 +1,4 @@
+import { Rectangle, type BarShapeProps } from 'recharts'
 import type { PartialKind, TimeseriesPoint } from '@/api/client'
 
 /** A point split into the two line series a chart draws: `solid` holds complete buckets,
@@ -45,4 +46,16 @@ export function partialNote(kind: PartialKind | null | undefined): string | null
 export function withPartialSuffix(text: string, kind: PartialKind | null | undefined): string {
   const note = partialNote(kind)
   return note ? `${text} (${note.toLowerCase()})` : text
+}
+
+/** Opacity of a partial bucket's bar. Faded, not hidden: the value is real, just incomplete. */
+const PARTIAL_BAR_OPACITY = 0.4
+
+/** A `<Bar shape>` that draws a partial bucket at PARTIAL_BAR_OPACITY -- the bar-chart form of
+ * the dashed tail `splitPartial` gives a line -- so its short bar doesn't read as a real drop.
+ * A `shape` rather than per-bar `<Cell>`s, which recharts 3 deprecates.
+ */
+export function partialBarShape(props: BarShapeProps) {
+  const partial = (props.payload as { partial?: unknown } | undefined)?.partial
+  return <Rectangle {...props} fillOpacity={partial ? PARTIAL_BAR_OPACITY : 1} />
 }

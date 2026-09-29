@@ -90,7 +90,7 @@ def _mark_partial_buckets(
     start: str | None,
     end: str | None,
     latest: str | None,
-    earliest: str | None = None,
+    earliest: str | None,
 ) -> None:
     """Sets `partial` on each point of a cumulative series: "in_progress", "truncated" or None.
 

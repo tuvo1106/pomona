@@ -1,16 +1,19 @@
 import { useMemo } from 'react'
-import { Bar, BarChart, Cell, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { DataCard } from '@/components/DataCard'
 import { useRunningMileage } from '@/hooks/useWorkouts'
 import {
   CHART_ANIMATION_DURATION,
-  CHART_AXIS_STROKE,
-  CHART_AXIS_TICK,
+  CHART_BAR_RADIUS,
   CHART_GRID_PROPS,
+  CHART_MAX_BAR_SIZE,
+  CHART_X_AXIS_PROPS,
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
+import { formatDistance } from '@/lib/distance'
 import { makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
+import { partialBarShape } from '@/lib/partialBuckets'
 import type { DateRange } from '@/lib/timeRange'
 
 /** Running distance for the selected range: the total as a headline, and a bar per calendar
@@ -24,9 +27,6 @@ import type { DateRange } from '@/lib/timeRange'
  * partway into -- is drawn faded, the bar-chart form of the dashed tail the line charts use
  * (see lib/partialBuckets): its short bar is a partial count, not a slow month.
  */
-
-// Opacity of a partial month's bar. Faded, not hidden: the miles are real, just incomplete.
-const PARTIAL_BAR_OPACITY = 0.4
 export function RunningMileage({ range }: { range: DateRange }) {
   const { data, isLoading, error } = useRunningMileage(range)
   const unit = data?.unit ?? ''
@@ -50,12 +50,7 @@ export function RunningMileage({ range }: { range: DateRange }) {
         <div className="space-y-4">
           <div className="flex items-baseline gap-1.5">
             <span className="text-2xl font-semibold tabular-nums">
-              {total != null
-                ? total.toLocaleString('en-US', {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1,
-                  })
-                : '—'}
+              {formatDistance(total, null)}
             </span>
             {unit && <span className="text-muted-foreground text-sm">{unit}</span>}
             <span className="text-muted-foreground ml-2 text-sm">
@@ -74,15 +69,7 @@ export function RunningMileage({ range }: { range: DateRange }) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid {...CHART_GRID_PROPS} />
-                <XAxis
-                  dataKey="date"
-                  tick={CHART_AXIS_TICK}
-                  stroke={CHART_AXIS_STROKE}
-                  axisLine={false}
-                  tickLine={false}
-                  minTickGap={16}
-                  tickFormatter={tickFormatter}
-                />
+                <XAxis {...CHART_X_AXIS_PROPS} tickFormatter={tickFormatter} />
                 <YAxis {...CHART_Y_AXIS_PROPS} width={40} />
                 <Tooltip
                   cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
@@ -93,16 +80,11 @@ export function RunningMileage({ range }: { range: DateRange }) {
                   dataKey="distance"
                   name={unit ? `Distance (${unit})` : 'Distance'}
                   fill="var(--chart-1)"
-                  radius={[3, 3, 0, 0]}
+                  radius={CHART_BAR_RADIUS}
+                  maxBarSize={CHART_MAX_BAR_SIZE}
+                  shape={partialBarShape}
                   animationDuration={CHART_ANIMATION_DURATION}
-                >
-                  {data.points.map((point) => (
-                    <Cell
-                      key={point.date}
-                      fillOpacity={point.partial ? PARTIAL_BAR_OPACITY : 1}
-                    />
-                  ))}
-                </Bar>
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

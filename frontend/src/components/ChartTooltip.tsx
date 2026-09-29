@@ -19,7 +19,7 @@ export function ChartTooltip({
   if (!active || !payload || payload.length === 0) return null
 
   // A series drawn as two lines -- solid for complete buckets, dashed for partial ones (see
-  // lib/partialBuckets.ts) -- has both at the point where they join. They share a `name`, so
+  // lib/partialBuckets) -- has both at the point where they join. They share a `name`, so
   // keep the first entry per name and show the value once.
   const seen = new Set<unknown>()
   const entries = payload.filter((entry) => {

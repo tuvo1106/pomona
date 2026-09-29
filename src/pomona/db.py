@@ -125,25 +125,12 @@ CREATE INDEX IF NOT EXISTS idx_workout_routes_workout ON workout_routes(workout_
 CREATE INDEX IF NOT EXISTS idx_ecg_recordings_recorded_date ON ecg_recordings(recorded_date);
 """
 
-VIEWS = """
-CREATE VIEW IF NOT EXISTS daily_resting_hr AS
-  SELECT start_local_date AS date, AVG(value_num) AS value
-  FROM records WHERE type = 'HKQuantityTypeIdentifierRestingHeartRate'
-  GROUP BY start_local_date;
-
-CREATE VIEW IF NOT EXISTS daily_weight AS
-  SELECT start_local_date AS date, AVG(value_num) AS value
-  FROM records WHERE type = 'HKQuantityTypeIdentifierBodyMass'
-  GROUP BY start_local_date;
-"""
-# No daily_steps / daily_active_energy views: those are cumulative "sum" metrics that
-# HealthKit logs independently per source (iPhone, Watch, ...), so a naive SUM over
-# `records` inflates the true total on any day with more than one active device. The
-# correct aggregation requires per-record time-window deduplication (see dedup.py), which
-# is a sequential/stateful algorithm that can't be expressed as a plain SQL view -- use the
-# /api/metrics/{type}/timeseries endpoint (or dedup.py directly) instead of querying
-# `records` for these types. daily_resting_hr/daily_weight are unaffected: they're
-# point-in-time averages, not cumulative sums, so multi-source overlap doesn't inflate them.
+# If you query `records` directly: cumulative "sum" metrics (steps, active energy, ...) are
+# logged independently per source (iPhone, Watch, ...), so a naive SUM inflates the true total
+# on any day with more than one active device. The correct aggregation requires per-record
+# time-window deduplication (see dedup.py), which is a sequential/stateful algorithm that can't
+# be expressed in plain SQL -- use the /api/metrics/{type}/timeseries endpoint (or dedup.py
+# directly) instead. Point-in-time averages (resting heart rate, weight) are unaffected.
 
 
 def connect(
@@ -180,16 +167,21 @@ def _exec_statements(conn: sqlite3.Connection, sql_block: str) -> None:
             conn.execute(statement)
 
 
+# Views this app used to create and no longer does. Dropped on every ingest so a database built
+# by an older version doesn't keep them forever -- DELETE-based reloads never touch views. Not a
+# migration (ADR-0003): it's idempotent, unversioned, and a no-op on a database that never had
+# them, so there's nothing to track. An entry can go once no one could still have one.
+RETIRED_VIEWS = ["daily_resting_hr", "daily_weight"]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     _exec_statements(conn, SCHEMA)
+    for view in RETIRED_VIEWS:
+        conn.execute(f"DROP VIEW IF EXISTS {view}")
 
 
 def create_indexes(conn: sqlite3.Connection) -> None:
     _exec_statements(conn, INDEXES)
-
-
-def create_views(conn: sqlite3.Connection) -> None:
-    _exec_statements(conn, VIEWS)
 
 
 def latest_data_date(conn: sqlite3.Connection) -> str | None:

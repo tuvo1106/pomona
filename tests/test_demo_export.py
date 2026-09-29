@@ -64,7 +64,6 @@ def demo_db(demo_export: Path, tmp_path_factory) -> sqlite3.Connection:
     load_workout_routes(conn, demo_export / "workout-routes")
     load_ecg_recordings(conn, demo_export / "electrocardiograms")
     db.create_indexes(conn)
-    db.create_views(conn)
     return conn
 
 

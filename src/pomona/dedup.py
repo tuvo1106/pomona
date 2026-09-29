@@ -48,7 +48,7 @@ def dedup_nonoverlapping(records: list[IntervalRecord]) -> list[IntervalRecord]:
 def bucket_local_date(local_date: str, bucket: str) -> str:
     """Maps a 'YYYY-MM-DD' string to its bucket key: unchanged for 'day', the Monday of its
     week for 'week', or the 1st of its month for 'month' -- matches the SQL bucket semantics
-    used elsewhere in the API (BUCKET_EXPRESSIONS in api/dashboard.py).
+    used elsewhere in the API (_bucket_expr in api/dashboard.py).
     """
     d = date_cls.fromisoformat(local_date)
     if bucket == "week":

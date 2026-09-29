@@ -29,7 +29,7 @@ import { formatAxisNumber } from '@/lib/formatNumber'
 import { friendlyName } from '@/lib/metricNames'
 import { labelIndex, splitPartial, withPartialSuffix } from '@/lib/partialBuckets'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
 
 // Stable fallback so the memos below don't recompute on every render while loading.
@@ -53,7 +53,7 @@ interface MetricChartProps {
   metricType: string
   title?: string
   range: DateRange
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   /** The metric group's hue (see MetricGroup.color). Defaults to the generic chart
    * color for a chart rendered outside a group. */
   color?: string
@@ -85,7 +85,7 @@ export function MetricChart({
       ),
     [points, data?.aggregation_mode],
   )
-  // Partial buckets (see lib/partialBuckets.ts) are drawn as a dashed segment off the solid
+  // Partial buckets (see lib/partialBuckets) are drawn as a dashed segment off the solid
   // line, and the end label moves to the last complete bucket.
   const chartPoints = useMemo(() => splitPartial(points), [points])
   const endIndex = useMemo(() => labelIndex(points), [points])
