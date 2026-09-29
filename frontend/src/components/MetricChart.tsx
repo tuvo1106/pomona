@@ -14,6 +14,7 @@ import { makeLineEndDot, makePartialDot } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
+import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { useMetricTimeseries } from '@/hooks/useMetricTimeseries'
 import { axisScale } from '@/lib/axisScale'
@@ -24,10 +25,9 @@ import {
   CHART_X_AXIS_PROPS,
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
-import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { friendlyName } from '@/lib/metricNames'
-import { labelIndex, splitPartial, withPartialSuffix } from '@/lib/partialBuckets'
+import { labelIndex, splitPartial, timeseriesCells } from '@/lib/partialBuckets'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
@@ -73,9 +73,14 @@ export function MetricChart({
   const { data, isLoading, error } = useMetricTimeseries(metricType, { ...range, bucket })
   const label = title ?? friendlyName(metricType)
 
-  const points = useMemo(
+  const displayPoints = useMemo(
     () => toDisplayPoints(data?.points ?? NO_POINTS, data?.unit),
     [data?.points, data?.unit],
+  )
+  const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
+    displayPoints,
+    bucket,
+    timeseriesCells,
   )
   const scale = useMemo(
     () =>
@@ -91,19 +96,6 @@ export function MetricChart({
   const endIndex = useMemo(() => labelIndex(points), [points])
   const lineEndDot = useMemo(() => makeLineEndDot(color, endIndex), [color, endIndex])
   const partialDot = useMemo(() => makePartialDot(color, endIndex), [color, endIndex])
-  const tickFormatter = useMemo(
-    () => makeDateTickFormatter(points.map((p) => p.date), bucket),
-    [points, bucket],
-  )
-  const labelFormatter = useMemo(() => makeDateLabelFormatter(bucket), [bucket])
-  const tableRows = useMemo(
-    () =>
-      points.map((p) => ({
-        date: formatBucketDate(p.date, bucket),
-        value: p.value != null ? withPartialSuffix(formatAxisNumber(p.value), p.partial) : '—',
-      })),
-    [points, bucket],
-  )
   // formatAxisNumber, not the axis scale's own formatter: that one abbreviates to fit a
   // tick ("5K"), which is right for a label repeated up the side of a chart and wrong for a
   // figure quoted once. The strip is read against the end label on the chart below it, and
@@ -130,7 +122,7 @@ export function MetricChart({
       title={label}
       unit={displayUnit(unitContext)}
       tableColumns={[
-        { key: 'date', header: 'Date' },
+        DATE_COLUMN,
         { key: 'value', header: valueColumnHeader(unitContext), numeric: true },
       ]}
       tableRows={tableRows}

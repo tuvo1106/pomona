@@ -5,6 +5,7 @@ import { barEndLabel } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
+import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { useSleep } from '@/hooks/useSleep'
 import { axisScale } from '@/lib/axisScale'
@@ -16,13 +17,13 @@ import {
   CHART_X_AXIS_PROPS,
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
-import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 
-// Stable fallback so the memos below don't recompute on every render while loading.
-const NO_POINTS: SleepPoint[] = []
+function sleepCells(point: SleepPoint) {
+  return { hours: point.hours != null ? formatAxisNumber(point.hours) : '—' }
+}
 
 export function SleepChart({
   range: dashboardRange,
@@ -38,24 +39,15 @@ export function SleepChart({
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog
   const { data, isLoading, error } = useSleep(range, bucket)
-  const points = data?.points ?? NO_POINTS
+  const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
+    data?.points,
+    bucket,
+    sleepCells,
+  )
   const endLabel = useMemo(() => barEndLabel(points.length - 1), [points.length])
   const scale = useMemo(
     () => axisScale(points.map((p) => p.hours), { zeroBaseline: true }),
     [points],
-  )
-  const tickFormatter = useMemo(
-    () => makeDateTickFormatter(points.map((p) => p.date), bucket),
-    [points, bucket],
-  )
-  const labelFormatter = useMemo(() => makeDateLabelFormatter(bucket), [bucket])
-  const tableRows = useMemo(
-    () =>
-      points.map((p) => ({
-        date: formatBucketDate(p.date, bucket),
-        hours: p.hours != null ? formatAxisNumber(p.hours) : '—',
-      })),
-    [points, bucket],
   )
 
   // The API returns no partial flag for sleep, so every night counts toward the spread.
@@ -74,7 +66,7 @@ export function SleepChart({
       // read a bucketed total and suffix it "/wk".
       unit={bucket === 'day' ? 'hours' : 'avg hours/night'}
       tableColumns={[
-        { key: 'date', header: 'Date' },
+        DATE_COLUMN,
         { key: 'hours', header: bucket === 'day' ? 'Hours' : 'Avg hours/night', numeric: true },
       ]}
       tableRows={tableRows}

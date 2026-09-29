@@ -9,11 +9,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type CategoryMetricMode, type TimeseriesPoint } from '@/api/client'
+import { api, type CategoryMetricMode } from '@/api/client'
 import { barEndLabel } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
+import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { axisScale } from '@/lib/axisScale'
 import {
@@ -24,15 +25,11 @@ import {
   CHART_X_AXIS_PROPS,
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
-import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
-import { labelIndex, partialBarShape, withPartialSuffix } from '@/lib/partialBuckets'
+import { labelIndex, partialBarShape, timeseriesCells } from '@/lib/partialBuckets'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
-
-// Stable fallback so the memos below don't recompute on every render while loading.
-const NO_POINTS: TimeseriesPoint[] = []
 
 interface CategoryMetricChartProps {
   metricType: string
@@ -62,7 +59,11 @@ export function CategoryMetricChart({
     queryKey: ['category-metric-timeseries', metricType, mode, params],
     queryFn: () => api.categoryMetricTimeseries(metricType, mode, params),
   })
-  const points = data?.points ?? NO_POINTS
+  const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
+    data?.points,
+    bucket,
+    timeseriesCells,
+  )
   // The end label sits on the last complete bucket; partial bars are faded (see
   // lib/partialBuckets and `partialBarShape`).
   const endIndex = useMemo(() => labelIndex(points), [points])
@@ -74,19 +75,6 @@ export function CategoryMetricChart({
         { zeroBaseline: true, integer: mode === 'count' },
       ),
     [points, mode],
-  )
-  const tickFormatter = useMemo(
-    () => makeDateTickFormatter(points.map((p) => p.date), bucket),
-    [points, bucket],
-  )
-  const labelFormatter = useMemo(() => makeDateLabelFormatter(bucket), [bucket])
-  const tableRows = useMemo(
-    () =>
-      points.map((p) => ({
-        date: formatBucketDate(p.date, bucket),
-        value: p.value != null ? withPartialSuffix(formatAxisNumber(p.value), p.partial) : '—',
-      })),
-    [points, bucket],
   )
 
   // Both modes total their bucket -- count sums events, duration sums minutes -- so both
@@ -104,7 +92,7 @@ export function CategoryMetricChart({
       dialog={dialog}
       stats={stats}
       tableColumns={[
-        { key: 'date', header: 'Date' },
+        DATE_COLUMN,
         { key: 'value', header: valueColumnHeader(unitContext), numeric: true },
       ]}
       tableRows={tableRows}

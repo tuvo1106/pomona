@@ -1,5 +1,6 @@
 import { Rectangle, type BarShapeProps } from 'recharts'
 import type { PartialKind, TimeseriesPoint } from '@/api/client'
+import { formatAxisNumber } from '@/lib/formatNumber'
 
 /** A point split into the two line series a chart draws: `solid` holds complete buckets,
  * `dashed` holds partial buckets plus the complete neighbour each one joins to, so the dashed
@@ -46,6 +47,14 @@ export function partialNote(kind: PartialKind | null | undefined): string | null
 export function withPartialSuffix(text: string, kind: PartialKind | null | undefined): string {
   const note = partialNote(kind)
   return note ? `${text} (${note.toLowerCase()})` : text
+}
+
+/** A timeseries point's table cell: its value, noting a bucket still in progress. */
+export function timeseriesCells(point: TimeseriesPoint): { value: string } {
+  return {
+    value:
+      point.value != null ? withPartialSuffix(formatAxisNumber(point.value), point.partial) : '—',
+  }
 }
 
 /** Opacity of a partial bucket's bar. Faded, not hidden: the value is real, just incomplete. */
