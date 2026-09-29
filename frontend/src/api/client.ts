@@ -128,7 +128,7 @@ export interface ClinicalRecord {
   // for every other resource type and for an Observation without one. low/high are only set
   // when the bound is numeric -- a text-only range carries just `text`.
   reference_range: ReferenceRange | null
-  // An Observation measured in parts (see _components in dashboard.py): blood pressure and
+  // An Observation measured in parts (see components in fhir.py): blood pressure and
   // other panels put their values here and leave value_num/value_text null. Null for an
   // ordinary single-valued record. FHIR does not fix the order, so match on `code`.
   components: ObservationComponent[] | null

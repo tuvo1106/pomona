@@ -14,6 +14,7 @@ flattened into results_json -- see _resolve_diagnostic_report_results.
 
 import json
 import logging
+import math
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -50,8 +51,14 @@ def _num(value: Any) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     if isinstance(value, int) and not _SQLITE_INT_MIN <= value <= _SQLITE_INT_MAX:
-        return float(value)
-    return value
+        try:
+            value = float(value)
+        except OverflowError:
+            # Too big even for a float: raising here would abort the whole ingest.
+            return None
+    # A value like 1e999 parses to inf. Stored in results_json it comes back as inf, which
+    # the API can't encode, so one DiagnosticReport would 500 the whole clinical page.
+    return value if math.isfinite(value) else None
 
 
 def _date(value: Any) -> int | None:

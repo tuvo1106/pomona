@@ -327,6 +327,34 @@ class TestLoadClinicalRecords:
         results = json.loads(_row(writable_conn, "dr-odd")["results_json"])
         assert [r["display"] for r in results] == [None, "HDL"]
 
+    def test_numbers_no_float_can_hold_load_as_none(self, writable_conn, tmp_path):
+        # Written as raw text: both are valid JSON that json.dumps can't produce. 1e999
+        # parses to inf, which would ride along in results_json and 500 the clinical API;
+        # a 400-digit int used to raise converting to float and abort the whole ingest.
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        for resource_id, value in [("inf", "1e999"), ("vast", "1" + "0" * 400)]:
+            (clinical_dir / f"Observation-{resource_id}.json").write_text(
+                f'{{"resourceType": "Observation", "id": "{resource_id}",'
+                f' "valueQuantity": {{"value": {value}, "unit": "mg"}}}}'
+            )
+        (clinical_dir / "DiagnosticReport-1.json").write_text(
+            json.dumps(
+                {
+                    "resourceType": "DiagnosticReport",
+                    "id": "dr",
+                    "result": [{"reference": "Observation/inf"}],
+                }
+            )
+        )
+
+        assert load_clinical_records(writable_conn, clinical_dir) == (3, 0)
+        assert _row(writable_conn, "inf")["value_num"] is None
+        assert _row(writable_conn, "vast")["value_num"] is None
+        results = json.loads(_row(writable_conn, "dr")["results_json"])
+        assert results[0]["value_num"] is None
+        assert results[0]["value_unit"] == "mg"
+
     def test_duplicate_type_and_id_each_keep_their_own_fields(self, writable_conn, tmp_path):
         # Two providers can both export Observation/1 (ADR-0003). Each row must carry its
         # own flattened values, not the last file's.

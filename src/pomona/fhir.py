@@ -7,6 +7,7 @@ yields None, never an exception, because one malformed record must not 500 the w
 """
 
 import json
+import math
 
 # The ways a FHIR feed spells "this coding is LOINC". Used to pick the LOINC code out of a
 # component's `coding[]`, which an EHR may fill with codings from several systems. The OID
@@ -22,7 +23,9 @@ def parse_resource(raw_json: str | None) -> dict | None:
         return None
     try:
         resource = json.loads(raw_json)
-    except json.JSONDecodeError:
+    # RecursionError as well as bad JSON, like the ingest-side parser: a deeply nested payload
+    # that parsed at ingest can still exceed the stack of a request-handling thread.
+    except (ValueError, RecursionError):
         return None
     return resource if isinstance(resource, dict) else None
 
@@ -32,7 +35,8 @@ def reference_range(resource: dict | None) -> dict | None:
 
     `low`/`high` are only populated when the bound is a number; a text-only range
     ("Negative", "See comment") comes back with just `text`, and the frontend shows it
-    without flagging anything.
+    without flagging anything. So does a range whose low and high are in different units:
+    there's no one unit to show them in or compare a value against.
     """
     return _flatten_range(resource.get("referenceRange")) if resource else None
 
@@ -63,9 +67,9 @@ def components(resource: dict | None) -> list[dict] | None:
         coding = code.get("coding")
         codings = [c for c in coding if isinstance(c, dict)] if isinstance(coding, list) else []
         label = code.get("text")
-        if not isinstance(label, str) or not label:
+        if not _nonempty_str(label):
             label = next(
-                (c["display"] for c in codings if isinstance(c.get("display"), str)),
+                (c["display"] for c in codings if _nonempty_str(c.get("display"))),
                 None,
             )
         loinc = next(
@@ -99,17 +103,11 @@ def _flatten_range(ranges: object) -> dict | None:
     if not isinstance(ranges, list) or not ranges or not isinstance(ranges[0], dict):
         return None
     first = ranges[0]
-
-    def bound(key: str) -> tuple[float | None, str | None]:
-        side = first.get(key)
-        value = side.get("value") if isinstance(side, dict) else None
-        # bool is an int subclass -- a malformed `"value": true` isn't a bound.
-        if not isinstance(value, int | float) or isinstance(value, bool):
-            return None, None
-        return value, side.get("unit")
-
-    low, low_unit = bound("low")
-    high, high_unit = bound("high")
+    # A FHIR range bound is a SimpleQuantity, so it's read the same way as a value.
+    low, low_unit = _quantity(first.get("low"))
+    high, high_unit = _quantity(first.get("high"))
+    if low_unit and high_unit and low_unit != high_unit:
+        low = high = low_unit = high_unit = None
     text = first.get("text") if isinstance(first.get("text"), str) else None
     if low is None and high is None and text is None:
         return None
@@ -121,8 +119,24 @@ def _quantity(quantity: object) -> tuple[float | None, str | None]:
     if not isinstance(quantity, dict):
         return None, None
     value = quantity.get("value")
-    # bool is an int subclass -- a malformed `"value": true` isn't a measurement.
-    if not isinstance(value, int | float) or isinstance(value, bool):
+    if not _is_measurement(value):
         return None, None
     unit = quantity.get("unit")
     return value, unit if isinstance(unit, str) else None
+
+
+def _nonempty_str(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def _is_measurement(value: object) -> bool:
+    # bool is an int subclass -- a malformed `"value": true` isn't a measurement. Nor is a
+    # value like 1e999, which parses to inf: the response can't encode it, and one record
+    # would 500 the whole clinical page. An int too big for a float encodes, but the browser
+    # reads it back as Infinity -- and math.isfinite raises on it rather than answering.
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
