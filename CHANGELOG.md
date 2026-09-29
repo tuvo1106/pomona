@@ -16,6 +16,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   silently left out. No schema change, so no need to delete your database.
 - **"This year" range** — calendar year to date, alongside the rolling "Last year".
 
+### Fixed
+
+- **A malformed clinical record no longer aborts the whole ingest.** One bad file in
+  `clinical-records/` (invalid JSON, or a resource with an unexpected shape) used to roll back
+  everything, `export.xml` included. It's now skipped and counted, the same way bad GPX and ECG
+  files already were, and the count is shown in the ingest summary. No schema change, so no
+  need to delete your database.
+
 ## [0.1.0] - 2026-09-25
 
 First public release. Pomona reads an Apple Health export into a local SQLite database and

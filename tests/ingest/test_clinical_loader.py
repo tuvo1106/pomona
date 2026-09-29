@@ -19,8 +19,8 @@ class TestLoadClinicalRecords:
     def test_loads_every_fixture_file_except_the_skipped_type(self, writable_conn):
         # Seven files in the fixture dir, five rows: Patient and Procedure are both off the
         # allowlist, so neither is stored.
-        count = _load(writable_conn)
-        assert count == 5
+        loaded, skipped = _load(writable_conn)
+        assert (loaded, skipped) == (5, 0)
         assert writable_conn.execute("SELECT COUNT(*) FROM clinical_records").fetchone()[0] == 5
 
     def test_observation_fields(self, writable_conn):
@@ -188,11 +188,10 @@ class TestLoadClinicalRecords:
     def test_reingesting_is_idempotent(self, writable_conn):
         first = _load(writable_conn)
         second = _load(writable_conn)
-        assert first == second == 5
+        assert first == second == (5, 0)
 
     def test_missing_clinical_dir_returns_zero_without_raising(self, writable_conn, tmp_path):
-        count = load_clinical_records(writable_conn, tmp_path / "does-not-exist")
-        assert count == 0
+        assert load_clinical_records(writable_conn, tmp_path / "does-not-exist") == (0, 0)
 
     def test_missing_clinical_dir_leaves_existing_rows_intact(self, writable_conn, tmp_path):
         # A mistyped --clinical-dir must not wipe previously-ingested clinical data: the
@@ -213,8 +212,8 @@ class TestLoadClinicalRecords:
         (clinical_dir / "Observation-1.json").write_text(
             json.dumps({"resourceType": "Observation", "id": "1"})
         )
-        count = load_clinical_records(writable_conn, clinical_dir)
-        assert count == 2
+        loaded, _ = load_clinical_records(writable_conn, clinical_dir)
+        assert loaded == 2
         rows = writable_conn.execute(
             "SELECT id, resource_id, resource_type FROM clinical_records ORDER BY resource_type"
         ).fetchall()
@@ -236,5 +235,28 @@ class TestLoadClinicalRecords:
         (unknown_dir / "Weird-1.json").write_text(
             json.dumps({"resourceType": "SomethingNew", "id": "weird-1"})
         )
-        assert load_clinical_records(writable_conn, unknown_dir) == 0
+        assert load_clinical_records(writable_conn, unknown_dir) == (0, 0)
         assert _row(writable_conn, "weird-1") is None
+
+    def test_bad_files_are_skipped_not_fatal(self, writable_conn, tmp_path):
+        # The whole ingest is one transaction, so a raise here would roll back export.xml
+        # and every other side-loader too. Each of these must be skipped and counted instead.
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        (clinical_dir / "Observation-good.json").write_text(
+            json.dumps({"resourceType": "Observation", "id": "good", "code": {"text": "LDL"}})
+        )
+        (clinical_dir / "truncated.json").write_text('{"resourceType": "Observ')
+        (clinical_dir / "not-utf8.json").write_bytes(b"\xff\xfe\x00garbage")
+        (clinical_dir / "top-level-array.json").write_text("[]")
+        (clinical_dir / "Observation-bad-code.json").write_text(
+            json.dumps({"resourceType": "Observation", "id": "bad-code", "code": "LDL"})
+        )
+        (clinical_dir / "DiagnosticReport-bad-result.json").write_text(
+            json.dumps({"resourceType": "DiagnosticReport", "id": "dr-bad", "result": ["x"]})
+        )
+
+        loaded, skipped = load_clinical_records(writable_conn, clinical_dir)
+
+        assert (loaded, skipped) == (1, 5)
+        assert _row(writable_conn, "good")["code_text"] == "LDL"

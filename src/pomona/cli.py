@@ -82,7 +82,9 @@ def ingest(
         start = time.monotonic()
 
         counts = load_export_xml(conn, export_xml, show_progress=not fast)
-        clinical_count = load_clinical_records(conn, clinical_dir) if clinical_dir else 0
+        clinical_count, clinical_skipped = (
+            load_clinical_records(conn, clinical_dir) if clinical_dir else (0, 0)
+        )
         routes_count, routes_skipped = (
             load_workout_routes(conn, routes_dir) if routes_dir else (0, 0)
         )
@@ -104,6 +106,7 @@ def ingest(
                 ("workouts_count", str(counts.get("Workout", 0))),
                 ("activity_summaries_count", str(counts.get("ActivitySummary", 0))),
                 ("clinical_records_count", str(clinical_count)),
+                ("clinical_skipped_count", str(clinical_skipped)),
                 ("routes_count", str(routes_count)),
                 ("routes_skipped_count", str(routes_skipped)),
                 ("ecg_count", str(ecg_count)),
@@ -134,12 +137,14 @@ def ingest(
     finally:
         conn.close()
 
+    clinical_note = f" ({clinical_skipped:,} skipped)" if clinical_skipped else ""
     routes_note = f" ({routes_skipped:,} skipped)" if routes_skipped else ""
     ecg_note = f" ({ecg_skipped:,} skipped)" if ecg_skipped else ""
     typer.echo(
         f"Ingested {counts.get('Record', 0):,} records, {counts.get('Workout', 0):,} workouts, "
         f"{counts.get('ActivitySummary', 0):,} activity summaries, "
-        f"{clinical_count:,} clinical records, {routes_count:,} workout routes{routes_note}, "
+        f"{clinical_count:,} clinical records{clinical_note}, "
+        f"{routes_count:,} workout routes{routes_note}, "
         f"{ecg_count:,} ECG recordings{ecg_note} "
         f"in {elapsed:.1f}s -> {db_path}"
     )

@@ -209,46 +209,65 @@ INSERT_SQL = (
 )
 
 
-def load_clinical_records(conn: sqlite3.Connection, clinical_dir: Path) -> int:
+# What a malformed file or an unexpectedly-shaped resource raises: bad JSON and bad UTF-8
+# are both ValueErrors, and a field of the wrong type (a string where an object belongs, a
+# top-level array) surfaces as AttributeError/TypeError/KeyError inside the extractors.
+_BAD_RESOURCE_ERRORS = (ValueError, AttributeError, TypeError, KeyError)
+
+
+def load_clinical_records(conn: sqlite3.Connection, clinical_dir: Path) -> tuple[int, int]:
     """Loads clinical_dir's *.json FHIR resources into clinical_records. Drop-and-reload.
 
-    Returns the number of rows written, which is *not* the number of files read: only the
+    Returns (loaded, skipped). `loaded` is *not* the number of files read: only the
     resource types in INGESTED_RESOURCE_TYPES are kept, and the rest are dropped at the door
-    and never counted. An export holding other types reports fewer records than files, by
-    design.
+    and counted in neither. An export holding other types reports fewer records than files,
+    by design.
 
-    A missing clinical_dir is a no-op that leaves existing rows alone: the table is only
-    cleared once there's a source directory to reload it from, so a mistyped path can't
+    A missing clinical_dir is a no-op ((0, 0)) that leaves existing rows alone: the table is
+    only cleared once there's a source directory to reload it from, so a mistyped path can't
     silently wipe previously-ingested clinical data.
+
+    A file that fails to parse or extract (invalid JSON, a non-object top level, a field of
+    the wrong shape) is skipped and counted, not fatal -- same as load_workout_routes/
+    load_ecg_recordings: this whole ingest runs inside one transaction, so one bad file must
+    not discard everything else already loaded.
     """
     if not clinical_dir.exists():
-        return 0
+        return 0, 0
     conn.execute("DELETE FROM clinical_records")
 
+    # Fields are extracted upfront, for every resource, so DiagnosticReport.result[]
+    # references can resolve against any other resource in this same directory, regardless
+    # of file/glob order.
     resources = []
+    fields_by_ref: dict[tuple[str, str], dict[str, Any]] = {}
+    skipped = 0
     for path in sorted(clinical_dir.glob("*.json")):
-        resource = json.loads(path.read_text())
-        resource_type = resource.get("resourceType")
-        if resource_type not in INGESTED_RESOURCE_TYPES:
+        try:
+            resource = json.loads(path.read_text())
+            resource_type = resource.get("resourceType")
+            if resource_type not in INGESTED_RESOURCE_TYPES:
+                continue
+            resource_id = resource.get("id") or path.stem
+            fields = EXTRACTORS[resource_type](resource)
+        except _BAD_RESOURCE_ERRORS:
+            skipped += 1
             continue
-        resource_id = resource.get("id") or path.stem
         resources.append((resource_id, resource_type, resource))
-
-    # Built upfront so DiagnosticReport.result[] references can resolve against any other
-    # resource in this same directory, regardless of file/glob order.
-    fields_by_ref = {
-        (resource_type, resource_id): EXTRACTORS[resource_type](resource)
-        for resource_id, resource_type, resource in resources
-    }
+        fields_by_ref[(resource_type, resource_id)] = fields
 
     rows = []
     for resource_id, resource_type, resource in resources:
         fields = fields_by_ref[(resource_type, resource_id)]
-        results_json = (
-            _resolve_diagnostic_report_results(resource, fields_by_ref)
-            if resource_type == "DiagnosticReport"
-            else None
-        )
+        try:
+            results_json = (
+                _resolve_diagnostic_report_results(resource, fields_by_ref)
+                if resource_type == "DiagnosticReport"
+                else None
+            )
+        except _BAD_RESOURCE_ERRORS:
+            skipped += 1
+            continue
         rows.append(
             (
                 resource_id,
@@ -269,4 +288,4 @@ def load_clinical_records(conn: sqlite3.Connection, clinical_dir: Path) -> int:
         )
 
     conn.executemany(INSERT_SQL, rows)
-    return len(rows)
+    return len(rows), skipped
