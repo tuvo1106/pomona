@@ -4,15 +4,13 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Rectangle,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
-  type BarShapeProps,
 } from 'recharts'
 import { api, type CategoryMetricMode, type TimeseriesPoint } from '@/api/client'
-import { barEndLabel } from '@/components/ChartEndLabels'
+import { barEndLabel, partialBarShape } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
@@ -30,26 +28,18 @@ import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from 
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
 import { labelIndex, withPartialSuffix } from '@/lib/partialBuckets'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
 
 // Stable fallback so the memos below don't recompute on every render while loading.
 const NO_POINTS: TimeseriesPoint[] = []
-
-/** A partial bucket's bar at reduced opacity, so it doesn't read as a real drop. A `shape`
- * rather than per-bar `<Cell>`s, which recharts 3 deprecates.
- */
-function partialBarShape(props: BarShapeProps) {
-  const partial = (props.payload as TimeseriesPoint | undefined)?.partial
-  return <Rectangle {...props} fillOpacity={partial ? 0.4 : 1} />
-}
 
 interface CategoryMetricChartProps {
   metricType: string
   mode: CategoryMetricMode
   title: string
   range: DateRange
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   valuePrefix?: string
   /** The metric group's hue (see MetricGroup.color). Defaults to the generic chart
    * color for a chart rendered outside a group. */
@@ -74,7 +64,7 @@ export function CategoryMetricChart({
   })
   const points = data?.points ?? NO_POINTS
   // The end label sits on the last complete bucket; partial bars are faded (see
-  // lib/partialBuckets.ts and `partialBarShape` below).
+  // lib/partialBuckets.ts and `partialBarShape`).
   const endIndex = useMemo(() => labelIndex(points), [points])
   const endLabel = useMemo(() => barEndLabel(endIndex), [endIndex])
   const scale = useMemo(

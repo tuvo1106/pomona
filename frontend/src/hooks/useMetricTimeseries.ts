@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 
 export function useMetricTimeseries(
   metricType: string,
-  params: DateRange & { bucket?: string } = {},
+  params: DateRange & { bucket?: Bucket } = {},
 ) {
   return useQuery({
     queryKey: ['metric-timeseries', metricType, params],

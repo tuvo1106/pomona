@@ -1,3 +1,4 @@
+import { Rectangle, type BarShapeProps } from 'recharts'
 import type { TimeseriesPoint } from '@/api/client'
 import { formatAxisNumber } from '@/lib/formatNumber'
 
@@ -110,4 +111,16 @@ export function barEndLabel(labelIndex: number) {
       </text>
     )
   }
+}
+
+/** Opacity of a partial bucket's bar. Faded, not hidden: the value is real, just incomplete. */
+export const PARTIAL_BAR_OPACITY = 0.4
+
+/** A `<Bar shape>` that draws a partial bucket (see lib/partialBuckets.ts) at
+ * PARTIAL_BAR_OPACITY, so its short bar doesn't read as a real drop. A `shape` rather than
+ * per-bar `<Cell>`s, which recharts 3 deprecates.
+ */
+export function partialBarShape(props: BarShapeProps) {
+  const partial = (props.payload as { partial?: unknown } | undefined)?.partial
+  return <Rectangle {...props} fillOpacity={partial ? PARTIAL_BAR_OPACITY : 1} />
 }

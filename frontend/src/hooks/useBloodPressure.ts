@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 
-export function useBloodPressure(range: DateRange, bucket: 'day' | 'week' | 'month' = 'day') {
+export function useBloodPressure(range: DateRange, bucket: Bucket = 'day') {
   const params = { ...range, bucket }
   return useQuery({
     queryKey: ['blood-pressure', params],

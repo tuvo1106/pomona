@@ -8,14 +8,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CONTENT_FADE_IN } from '@/lib/transitions'
 import { cn } from '@/lib/utils'
 import { PREVIEW_COUNT, groupSectionId, specKey, specTitle, type MetricGroup } from '@/lib/metricGroups'
-import type { DateRange } from '@/lib/timeRange'
+import type { Bucket, DateRange } from '@/lib/timeRange'
 
 interface AllChartsProps {
   groups: MetricGroup[]
   isLoading: boolean
   error: unknown
   range: DateRange
-  bucket: 'day' | 'week' | 'month'
+  bucket: Bucket
   /** Group ids showing all of their charts rather than the first PREVIEW_COUNT. */
   expandedGroups: ReadonlySet<string>
   onToggleGroup: (groupId: string) => void
