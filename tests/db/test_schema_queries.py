@@ -49,36 +49,6 @@ class TestSchemaCreation:
         db_module.create_indexes(writable_conn)
         db_module.create_indexes(writable_conn)  # must not raise
 
-    def test_views_are_queryable(self, writable_conn):
-        db_module.create_views(writable_conn)
-        _seed(
-            writable_conn,
-            [
-                (
-                    "HKQuantityTypeIdentifierRestingHeartRate",
-                    "60",
-                    60.0,
-                    "count/min",
-                    0,
-                    0,
-                    "2026-01-01",
-                ),
-                (
-                    "HKQuantityTypeIdentifierRestingHeartRate",
-                    "70",
-                    70.0,
-                    "count/min",
-                    1,
-                    1,
-                    "2026-01-01",
-                ),
-            ],
-        )
-        row = writable_conn.execute(
-            "SELECT value FROM daily_resting_hr WHERE date = '2026-01-01'"
-        ).fetchone()
-        assert row["value"] == 65.0
-
 
 class TestAggregationQueries:
     def test_sum_aggregation_over_a_day_matches_hand_computed_total(self, writable_conn):

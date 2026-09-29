@@ -91,7 +91,6 @@ def ingest(
         ecg_count, ecg_skipped = load_ecg_recordings(conn, ecg_dir) if ecg_dir else (0, 0)
 
         db.create_indexes(conn)
-        db.create_views(conn)
         elapsed = time.monotonic() - start
 
         conn.execute("DELETE FROM ingest_meta")

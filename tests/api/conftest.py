@@ -29,7 +29,6 @@ def seeded_db_path(tmp_path):
     load_workout_routes(conn, ROUTES_FIXTURES_DIR)
     load_ecg_recordings(conn, ECG_FIXTURES_DIR)
     db_module.create_indexes(conn)
-    db_module.create_views(conn)
     checkpoint_and_close(conn)
     return db_path
 
