@@ -142,6 +142,54 @@ class TestWorkoutsSummary:
         assert cycling["total_distance"] == 15.2
 
 
+class TestRunningMileage:
+    def test_totals_and_buckets_running_by_month(self, client):
+        body = client.get("/api/workouts/running").json()
+        # Only the run counts: the fixture's cycling workout is 15.2 of another sport.
+        assert body["unit"] == "mi"
+        assert body["runs"] == 1
+        assert body["total_distance"] == 3.1
+        assert body["points"] == [{"period": "2026-08-01", "distance": 3.1, "runs": 1}]
+
+    def test_date_range_filter(self, client):
+        body = client.get("/api/workouts/running?start=2026-09-01").json()
+        assert body == {"unit": None, "total_distance": None, "runs": 0, "points": []}
+
+    def test_months_without_runs_are_zero_not_missing(self, seeded_db_path, client):
+        conn = db_module.connect(seeded_db_path)
+        conn.execute(
+            "INSERT INTO workouts (activity_type, total_distance, total_distance_unit, "
+            "start_date, end_date, start_local_date) VALUES (?, 2.0, 'mi', 0, 0, '2026-10-05')",
+            ("HKWorkoutActivityTypeRunning",),
+        )
+        conn.commit()
+        checkpoint_and_close(conn)
+        points = client.get("/api/workouts/running").json()["points"]
+        assert [p["period"] for p in points] == ["2026-08-01", "2026-09-01", "2026-10-01"]
+        assert points[1] == {"period": "2026-09-01", "distance": 0.0, "runs": 0}
+
+    def test_mixed_units_are_converted_not_added(self, seeded_db_path, client):
+        conn = db_module.connect(seeded_db_path)
+        conn.executemany(
+            "INSERT INTO workouts (activity_type, total_distance, total_distance_unit, "
+            "start_date, end_date, start_local_date) VALUES (?, ?, ?, 0, 0, ?)",
+            [
+                ("HKWorkoutActivityTypeRunning", 5.0, "mi", "2026-08-12"),
+                ("HKWorkoutActivityTypeRunning", 1.609344, "km", "2026-09-02"),
+                ("HKWorkoutActivityTypeRunning", None, None, "2026-09-03"),
+            ],
+        )
+        conn.commit()
+        checkpoint_and_close(conn)
+        body = client.get("/api/workouts/running").json()
+        assert body["unit"] == "mi"  # 2 of 3 measured runs are in miles
+        assert body["runs"] == 4
+        assert body["total_distance"] == pytest.approx(3.1 + 5.0 + 1.0)
+        sept = next(p for p in body["points"] if p["period"] == "2026-09-01")
+        assert sept["runs"] == 2  # the unmeasured run still counts as a run
+        assert sept["distance"] == pytest.approx(1.0)
+
+
 class TestRoutes:
     def test_returns_every_route_with_points(self, client):
         response = client.get("/api/routes")

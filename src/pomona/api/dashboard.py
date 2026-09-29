@@ -719,6 +719,82 @@ def _quantity(quantity: object) -> tuple[float | None, str | None]:
     return value, unit if isinstance(unit, str) else None
 
 
+RUNNING = "HKWorkoutActivityTypeRunning"
+_KM_PER_MILE = 1.609344
+
+
+@router.get("/workouts/running")
+def running_mileage(conn: DbDep, start: str | None = None, end: str | None = None) -> dict:
+    """Running distance over the range, in total and by calendar month.
+
+    Distances are summed in one unit. A workout's unit is whatever the watch was set to when
+    it was recorded, so a history that spans a settings change holds both "mi" and "km", and
+    adding those raw would print a number in neither. The unit used is the one most runs
+    were recorded in (the person's own preference, so the totals read the way their watch
+    does); the others are converted. A run with no distance (a treadmill run the watch lost
+    track of) still counts as a run but adds no miles: null is unknown, not zero.
+    """
+    where, params = _date_range_where("start_local_date", start, end)
+    where.insert(0, "activity_type = ?")
+    rows = conn.execute(
+        f"""
+        SELECT strftime('%Y-%m-01', start_local_date) AS month,
+               total_distance, total_distance_unit
+        FROM workouts
+        WHERE {" AND ".join(where)}
+        ORDER BY start_local_date
+        """,
+        [RUNNING, *params],
+    ).fetchall()
+
+    unit_counts: dict[str, int] = {}
+    for row in rows:
+        if row["total_distance"] is not None and row["total_distance_unit"]:
+            unit = row["total_distance_unit"]
+            unit_counts[unit] = unit_counts.get(unit, 0) + 1
+    unit = max(unit_counts, key=lambda u: unit_counts[u]) if unit_counts else None
+
+    def convert(value: float, from_unit: str) -> float | None:
+        if from_unit == unit:
+            return value
+        if from_unit == "km" and unit == "mi":
+            return value / _KM_PER_MILE
+        if from_unit == "mi" and unit == "km":
+            return value * _KM_PER_MILE
+        return None  # an unrecognised unit is left out rather than guessed at
+
+    months: dict[str, dict] = {}
+    total = 0.0
+    for row in rows:
+        point = months.setdefault(
+            row["month"], {"period": row["month"], "distance": 0.0, "runs": 0}
+        )
+        point["runs"] += 1
+        if row["total_distance"] is None or not row["total_distance_unit"]:
+            continue
+        distance = convert(row["total_distance"], row["total_distance_unit"])
+        if distance is not None:
+            point["distance"] += distance
+            total += distance
+
+    # A month with no runs is a real zero, and a bar chart that skips it hides the gap: fill
+    # every month between the first and last run.
+    if months:
+        first, last = date.fromisoformat(min(months)), date.fromisoformat(max(months))
+        cursor = first
+        while cursor <= last:
+            key = cursor.isoformat()
+            months.setdefault(key, {"period": key, "distance": 0.0, "runs": 0})
+            cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    return {
+        "unit": unit,
+        "total_distance": total if unit else None,
+        "runs": len(rows),
+        "points": [months[key] for key in sorted(months)],
+    }
+
+
 def _previous_period(start: str | None, end: str | None) -> tuple[str, str] | None:
     """The period of equal length immediately before [start, end], both ends inclusive.
 

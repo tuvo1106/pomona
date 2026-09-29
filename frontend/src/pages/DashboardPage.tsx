@@ -8,6 +8,7 @@ import { AllMetrics } from '@/components/AllMetrics'
 import { BucketSelect } from '@/components/BucketSelect'
 import { DataFreshness } from '@/components/DataFreshness'
 import { Overview, OverviewSkeleton } from '@/components/Overview'
+import { RunningMileage } from '@/components/RunningMileage'
 import { SectionNav } from '@/components/SectionNav'
 import { TimeRangeSelect } from '@/components/TimeRangeSelect'
 import { WorkoutsList } from '@/components/WorkoutsList'
@@ -127,6 +128,10 @@ export function DashboardPage() {
               view of this data, and the calendar needs the width at long ranges. */}
           <section>
             <ActivityRings range={range} />
+          </section>
+
+          <section>
+            <RunningMileage range={range} />
           </section>
 
           <section className="space-y-3">
