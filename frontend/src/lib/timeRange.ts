@@ -1,4 +1,4 @@
-export type RangeOption = '1d' | '7d' | '30d' | '90d' | '365d' | 'all' | 'custom'
+export type RangeOption = '1d' | '7d' | '30d' | '90d' | '365d' | 'ytd' | 'all' | 'custom'
 
 export const RANGE_OPTIONS: { value: RangeOption; label: string }[] = [
   // "Today", not "Last 24 hours": records are bucketed by their local calendar date, so this
@@ -8,6 +8,9 @@ export const RANGE_OPTIONS: { value: RangeOption; label: string }[] = [
   { value: '30d', label: 'Last 30 days' },
   { value: '90d', label: 'Last 90 days' },
   { value: '365d', label: 'Last year' },
+  // Calendar year to date -- "how much have I done this year", which 'Last year' (a rolling
+  // 365 days) can't answer once the year has turned.
+  { value: 'ytd', label: 'This year' },
   { value: 'all', label: 'All time' },
   { value: 'custom', label: 'Custom range' },
 ]
@@ -63,6 +66,9 @@ export interface DateRange {
  * last export is over a month old. With a same-day export the anchor *is* today, so nothing
  * changes. "Today" keeps its literal meaning regardless of the anchor.
  *
+ * 'ytd' runs from 1 January of the end date's year, so against an old export it is that
+ * export's year, not the current one.
+ *
  * For 'custom', returns the given custom dates as-is (may be partial/empty while the
  * user is still picking them -- an empty string is treated as "no bound" by the API).
  */
@@ -76,6 +82,7 @@ export function computeDateRange(
   const today = todayLocalDateString()
   // Plain string comparison is a valid date comparison for zero-padded YYYY-MM-DD.
   const end = option !== '1d' && anchor && anchor < today ? anchor : today
+  if (option === 'ytd') return { start: `${end.slice(0, 4)}-01-01`, end }
   const start = parseLocalDate(end)
   start.setDate(start.getDate() - (RANGE_DAYS[option] - 1))
   return { start: toLocalDateString(start), end }

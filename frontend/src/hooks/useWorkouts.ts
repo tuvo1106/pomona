@@ -16,3 +16,10 @@ export function useWorkoutsSummary(range: DateRange) {
     queryFn: () => api.workoutsSummary(range),
   })
 }
+
+export function useRunningMileage(range: DateRange) {
+  return useQuery({
+    queryKey: ['running-mileage', range],
+    queryFn: () => api.runningMileage(range),
+  })
+}

@@ -719,6 +719,99 @@ def _quantity(quantity: object) -> tuple[float | None, str | None]:
     return value, unit if isinstance(unit, str) else None
 
 
+RUNNING = "HKWorkoutActivityTypeRunning"
+# Length units a workout distance is recorded in, as metres. Anything else is left out of the
+# total rather than guessed at, and counted in `unmeasured_runs` so the card can say so.
+_METRES_PER_UNIT = {"m": 1.0, "km": 1000.0, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344}
+
+
+def _next_month(day: date) -> date:
+    return (day.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+
+@router.get("/workouts/running")
+def running_mileage(conn: DbDep, start: str | None = None, end: str | None = None) -> dict:
+    """Running distance over the range, in total and by calendar month.
+
+    Distances are summed in one unit. A workout's unit is whatever the watch was set to when
+    it was recorded, so a history that spans a settings change holds both "mi" and "km", and
+    adding those raw would print a number in neither. The total is shown in whichever of mi
+    and km most runs were recorded in -- the person's own preference, so it reads the way
+    their watch does -- with a tie going to the more recent unit; a history in other length
+    units (m, yd) is shown in km. Everything else is converted to it.
+
+    A run whose distance can't be used -- none recorded (a treadmill run the watch lost track
+    of), no unit, or a unit that isn't a length -- still counts as a run but adds nothing:
+    null is unknown, not zero. `unmeasured_runs` says how many, so a total that leaves some
+    out doesn't pass for the whole.
+
+    `points` covers every month of the range that has data, zero-filled, so a month without
+    a run shows as a gap rather than disappearing. Months cut short are marked `partial` the
+    same way the cumulative charts' buckets are (see `_mark_partial_buckets`).
+    """
+    where, params = _date_range_where("start_local_date", start, end)
+    where.insert(0, "activity_type = ?")
+    rows = conn.execute(
+        f"""
+        SELECT strftime('%Y-%m-01', start_local_date) AS month,
+               total_distance, total_distance_unit
+        FROM workouts
+        WHERE {" AND ".join(where)}
+        ORDER BY start_local_date
+        """,
+        [RUNNING, *params],
+    ).fetchall()
+
+    measured = [
+        row
+        for row in rows
+        if row["total_distance"] is not None and row["total_distance_unit"] in _METRES_PER_UNIT
+    ]
+    # (count, index of latest run) per unit: the max is the most-used, ties to the latest.
+    usage: dict[str, tuple[int, int]] = {}
+    for i, row in enumerate(measured):
+        if row["total_distance_unit"] in ("mi", "km"):
+            count, _ = usage.get(row["total_distance_unit"], (0, 0))
+            usage[row["total_distance_unit"]] = (count + 1, i)
+    unit = max(usage, key=lambda u: usage[u]) if usage else ("km" if measured else None)
+
+    months: dict[str, dict] = {}
+    for row in rows:
+        point = months.setdefault(row["month"], {"date": row["month"], "distance": 0.0, "runs": 0})
+        point["runs"] += 1
+    total = 0.0
+    for row in measured:
+        distance = (
+            row["total_distance"] * _METRES_PER_UNIT[row["total_distance_unit"]]
+        ) / _METRES_PER_UNIT[unit]
+        months[row["month"]]["distance"] += distance
+        total += distance
+
+    earliest, latest = _data_span(conn)
+    if months:
+        # From the range's first month to its last, clamped to the data: months before the
+        # export begins or after it ends would be zeros that mean "no data", not "no runs".
+        lower = max((d for d in (start, earliest) if d), default=None)
+        upper = min((d for d in (end, latest) if d), default=None)
+        first = min(min(months), f"{lower[:7]}-01") if lower else min(months)
+        last = max(max(months), f"{upper[:7]}-01") if upper else max(months)
+        cursor = date.fromisoformat(first)
+        while cursor <= date.fromisoformat(last):
+            key = cursor.isoformat()
+            months.setdefault(key, {"date": key, "distance": 0.0, "runs": 0})
+            cursor = _next_month(cursor)
+
+    points = [months[key] for key in sorted(months)]
+    _mark_partial_buckets(points, "month", start, end, latest, earliest)
+    return {
+        "unit": unit,
+        "total_distance": total if unit else None,
+        "runs": len(rows),
+        "unmeasured_runs": len(rows) - len(measured),
+        "points": points,
+    }
+
+
 def _previous_period(start: str | None, end: str | None) -> tuple[str, str] | None:
     """The period of equal length immediately before [start, end], both ends inclusive.
 

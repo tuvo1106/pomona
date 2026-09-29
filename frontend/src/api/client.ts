@@ -79,6 +79,17 @@ export interface WorkoutTypeSummary {
   duration_unit: string | null
 }
 
+export interface RunningMileage {
+  /** The unit every distance below is in; null when no run in range has a distance. */
+  unit: string | null
+  total_distance: number | null
+  runs: number
+  /** Runs counted in `runs` whose distance couldn't be used (none recorded, or no length
+   * unit), so they add nothing to `total_distance`. */
+  unmeasured_runs: number
+  points: { date: string; distance: number; runs: number; partial?: PartialKind | null }[]
+}
+
 export interface ActivitySummary {
   date: string
   active_energy_burned: number | null
@@ -303,6 +314,9 @@ export const api = {
 
   workoutsSummary: (params: DateRangeParams = {}) =>
     getJSON<WorkoutTypeSummary[]>(`/api/workouts/summary${buildQuery(params)}`),
+
+  runningMileage: (params: DateRangeParams = {}) =>
+    getJSON<RunningMileage>(`/api/workouts/running${buildQuery(params)}`),
 
   activitySummary: (params: DateRangeParams = {}) =>
     getJSON<ActivitySummary[]>(`/api/activity-summary${buildQuery(params)}`),

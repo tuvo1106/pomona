@@ -142,6 +142,85 @@ class TestWorkoutsSummary:
         assert cycling["total_distance"] == 15.2
 
 
+def _add_runs(db_path, runs):
+    """Inserts (distance, unit, start_local_date) running workouts into a seeded database."""
+    conn = db_module.connect(db_path)
+    conn.executemany(
+        "INSERT INTO workouts (activity_type, total_distance, total_distance_unit, "
+        "start_date, end_date, start_local_date) VALUES (?, ?, ?, 0, 0, ?)",
+        [("HKWorkoutActivityTypeRunning", *run) for run in runs],
+    )
+    conn.commit()
+    checkpoint_and_close(conn)
+
+
+class TestRunningMileage:
+    def test_totals_only_running(self, client):
+        body = client.get("/api/workouts/running").json()
+        # The fixture's cycling workout (15.2) is another sport and stays out.
+        assert body["unit"] == "mi"
+        assert body["runs"] == 1
+        assert body["unmeasured_runs"] == 0
+        assert body["total_distance"] == 3.1
+
+    def test_months_span_the_range_clamped_to_the_data(self, client):
+        # The range starts in January, but the fixture's data begins 2026-03-10: months
+        # before it would be zeros meaning "no export", not "no runs".
+        points = client.get("/api/workouts/running?start=2026-01-01&end=2026-08-10").json()[
+            "points"
+        ]
+        assert [p["date"] for p in points] == [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01",
+        ]
+        assert points[1] == {"date": "2026-04-01", "distance": 0.0, "runs": 0, "partial": None}
+        assert points[-1]["distance"] == 3.1
+
+    def test_partial_months_are_marked(self, client):
+        points = client.get("/api/workouts/running").json()["points"]
+        assert points[0]["partial"] == "truncated"  # data starts 2026-03-10
+        assert points[-1]["partial"] == "in_progress"  # holds the newest data date
+
+    def test_no_runs_in_range(self, client):
+        body = client.get("/api/workouts/running?start=2026-09-01").json()
+        assert body == {
+            "unit": None,
+            "total_distance": None,
+            "runs": 0,
+            "unmeasured_runs": 0,
+            "points": [],
+        }
+
+    def test_mixed_units_are_converted_not_added(self, seeded_db_path, client):
+        _add_runs(seeded_db_path, [(5.0, "mi", "2026-07-12"), (1609.344, "m", "2026-07-20")])
+        body = client.get("/api/workouts/running").json()
+        assert body["unit"] == "mi"
+        assert body["total_distance"] == pytest.approx(3.1 + 5.0 + 1.0)
+        july = next(p for p in body["points"] if p["date"] == "2026-07-01")
+        assert july["distance"] == pytest.approx(6.0)
+
+    def test_unit_tie_goes_to_the_more_recent(self, seeded_db_path, client):
+        # One run in mi (the fixture's, 2026-08-10) and one earlier in km.
+        _add_runs(seeded_db_path, [(10.0, "km", "2026-05-01")])
+        assert client.get("/api/workouts/running").json()["unit"] == "mi"
+        _add_runs(seeded_db_path, [(10.0, "km", "2026-08-10")])
+        assert client.get("/api/workouts/running").json()["unit"] == "km"
+
+    def test_unusable_distances_count_as_runs_but_are_reported(self, seeded_db_path, client):
+        _add_runs(
+            seeded_db_path,
+            [(None, None, "2026-07-01"), (4.0, None, "2026-07-02"), (4.0, "kcal", "2026-07-03")],
+        )
+        body = client.get("/api/workouts/running").json()
+        assert body["runs"] == 4
+        assert body["unmeasured_runs"] == 3
+        assert body["total_distance"] == 3.1
+
+
 class TestRoutes:
     def test_returns_every_route_with_points(self, client):
         response = client.get("/api/routes")
