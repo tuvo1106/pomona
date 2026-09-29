@@ -124,7 +124,7 @@ export interface ClinicalRecord {
   // Resolved DiagnosticReport.result[] references (see clinical_loader.py); null for every
   // other resource type, and for a DiagnosticReport with no result[] entries.
   results: DiagnosticReportResult[] | null
-  // An Observation's first FHIR referenceRange (see _reference_range in dashboard.py); null
+  // An Observation's first FHIR referenceRange (see reference_range in fhir.py); null
   // for every other resource type and for an Observation without one. low/high are only set
   // when the bound is numeric -- a text-only range carries just `text`.
   reference_range: ReferenceRange | null
