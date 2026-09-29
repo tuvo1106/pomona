@@ -85,7 +85,7 @@ export function MetricChart({
       ),
     [points, data?.aggregation_mode],
   )
-  // Partial buckets (see lib/partialBuckets.ts) are drawn as a dashed segment off the solid
+  // Partial buckets (see lib/partialBuckets) are drawn as a dashed segment off the solid
   // line, and the end label moves to the last complete bucket.
   const chartPoints = useMemo(() => splitPartial(points), [points])
   const endIndex = useMemo(() => labelIndex(points), [points])

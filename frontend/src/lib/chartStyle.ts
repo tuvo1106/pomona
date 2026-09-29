@@ -14,7 +14,7 @@ export const CHART_AXIS_STROKE = 'var(--muted-foreground)'
  * ~40 small cards on this dashboard, boxes every series into a cage louder than the data.
  * The remaining lines stay *solid* hairlines rather than dashed -- dashing is noisier, not
  * lighter, and in these charts it already means something specific: a dashed segment is a
- * partial bucket (see lib/partialBuckets.ts). Keeping the grid solid leaves that signal
+ * partial bucket (see lib/partialBuckets). Keeping the grid solid leaves that signal
  * unambiguous.
  */
 export const CHART_GRID_PROPS = { className: 'stroke-border', vertical: false }

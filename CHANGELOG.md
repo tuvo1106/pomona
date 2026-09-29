@@ -18,9 +18,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- **The `daily_resting_hr` and `daily_weight` SQL views.** Nothing in the app read them. No schema
-  change to any table, so you don't need to delete your database; an existing one keeps the two
-  views until you do, and they still work.
+- **The `daily_resting_hr` and `daily_weight` SQL views.** Nothing in the app read them. Your next
+  `pomona ingest` drops them from an existing database; no table changed, so you don't need to
+  delete it.
 
 ### Fixed
 

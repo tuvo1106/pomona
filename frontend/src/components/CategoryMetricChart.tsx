@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api, type CategoryMetricMode, type TimeseriesPoint } from '@/api/client'
-import { barEndLabel, partialBarShape } from '@/components/ChartEndLabels'
+import { barEndLabel } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
@@ -27,7 +27,7 @@ import {
 import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
-import { labelIndex, withPartialSuffix } from '@/lib/partialBuckets'
+import { labelIndex, partialBarShape, withPartialSuffix } from '@/lib/partialBuckets'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
 
@@ -64,7 +64,7 @@ export function CategoryMetricChart({
   })
   const points = data?.points ?? NO_POINTS
   // The end label sits on the last complete bucket; partial bars are faded (see
-  // lib/partialBuckets.ts and `partialBarShape`).
+  // lib/partialBuckets and `partialBarShape`).
   const endIndex = useMemo(() => labelIndex(points), [points])
   const endLabel = useMemo(() => barEndLabel(endIndex), [endIndex])
   const scale = useMemo(

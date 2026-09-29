@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { partialBarShape } from '@/components/ChartEndLabels'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { DataCard } from '@/components/DataCard'
 import { useRunningMileage } from '@/hooks/useWorkouts'
@@ -14,6 +13,7 @@ import {
 } from '@/lib/chartStyle'
 import { formatDistance } from '@/lib/distance'
 import { makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
+import { partialBarShape } from '@/lib/partialBuckets'
 import type { DateRange } from '@/lib/timeRange'
 
 /** Running distance for the selected range: the total as a headline, and a bar per calendar

@@ -31,6 +31,14 @@ class TestSchemaCreation:
     def test_init_schema_is_idempotent(self, writable_conn):
         db_module.init_schema(writable_conn)  # must not raise (CREATE TABLE IF NOT EXISTS)
 
+    def test_init_schema_drops_retired_views(self, writable_conn):
+        # A database built by an older version still has these; re-ingesting must remove them.
+        for view in db_module.RETIRED_VIEWS:
+            writable_conn.execute(f"CREATE VIEW {view} AS SELECT 1 AS value")
+        db_module.init_schema(writable_conn)
+        views = writable_conn.execute("SELECT name FROM sqlite_master WHERE type = 'view'")
+        assert not {row["name"] for row in views} & set(db_module.RETIRED_VIEWS)
+
     def test_indexes_exist_after_create_indexes(self, writable_conn):
         db_module.create_indexes(writable_conn)
         indexes = {

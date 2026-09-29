@@ -21,7 +21,7 @@ interface StatPoint {
 
 /** Summary numbers for a series, computed over its *complete* buckets only.
  *
- * A partial bucket is a period the range cut off part-way (see lib/partialBuckets.ts), and
+ * A partial bucket is a period the range cut off part-way (see lib/partialBuckets), and
  * for a summed series its total is a fraction of a real one -- three days into a week, a
  * step count is a third of what it will be. Averaging that in drags the mean down and hands
  * back a `min` that no week actually had. The chart already refuses to label those points

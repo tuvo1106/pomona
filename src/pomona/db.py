@@ -167,8 +167,17 @@ def _exec_statements(conn: sqlite3.Connection, sql_block: str) -> None:
             conn.execute(statement)
 
 
+# Views this app used to create and no longer does. Dropped on every ingest so a database built
+# by an older version doesn't keep them forever -- DELETE-based reloads never touch views. Not a
+# migration (ADR-0003): it's idempotent, unversioned, and a no-op on a database that never had
+# them, so there's nothing to track. An entry can go once no one could still have one.
+RETIRED_VIEWS = ["daily_resting_hr", "daily_weight"]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     _exec_statements(conn, SCHEMA)
+    for view in RETIRED_VIEWS:
+        conn.execute(f"DROP VIEW IF EXISTS {view}")
 
 
 def create_indexes(conn: sqlite3.Connection) -> None:

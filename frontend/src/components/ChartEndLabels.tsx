@@ -1,4 +1,3 @@
-import { Rectangle, type BarShapeProps } from 'recharts'
 import type { TimeseriesPoint } from '@/api/client'
 import { formatAxisNumber } from '@/lib/formatNumber'
 
@@ -7,7 +6,7 @@ import { formatAxisNumber } from '@/lib/formatNumber'
  * calls out directly as chaos that goes unread. These are recharts custom dot/label render
  * props -- called once per data point, and only draw anything at `labelIndex`. That's
  * normally the last point; a series with a partial last bucket passes the last *complete*
- * one instead (see lib/partialBuckets.ts), since the partial value is the misleading one.
+ * one instead (see lib/partialBuckets), since the partial value is the misleading one.
  */
 
 interface DotProps {
@@ -111,16 +110,4 @@ export function barEndLabel(labelIndex: number) {
       </text>
     )
   }
-}
-
-/** Opacity of a partial bucket's bar. Faded, not hidden: the value is real, just incomplete. */
-export const PARTIAL_BAR_OPACITY = 0.4
-
-/** A `<Bar shape>` that draws a partial bucket (see lib/partialBuckets.ts) at
- * PARTIAL_BAR_OPACITY, so its short bar doesn't read as a real drop. A `shape` rather than
- * per-bar `<Cell>`s, which recharts 3 deprecates.
- */
-export function partialBarShape(props: BarShapeProps) {
-  const partial = (props.payload as { partial?: unknown } | undefined)?.partial
-  return <Rectangle {...props} fillOpacity={partial ? PARTIAL_BAR_OPACITY : 1} />
 }
