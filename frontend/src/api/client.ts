@@ -266,10 +266,14 @@ async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(path)
   if (!res.ok) {
     // Carry the API's own explanation through when there is one -- e.g. the 503 telling you
-    // to run `pomona ingest` first, which is far more useful than the status text.
+    // to run `pomona ingest` first, which is far more useful than the status text. Only a
+    // string one: a 422 validation error's `detail` is a list of objects, which would read
+    // as "[object Object]".
     const detail = await res
       .json()
-      .then((body: { detail?: string }) => body?.detail)
+      .then((body: { detail?: unknown }) =>
+        typeof body?.detail === 'string' ? body.detail : undefined,
+      )
       .catch(() => undefined)
     throw new ApiError(res.status, detail ?? `Request failed: ${res.status} ${res.statusText}`)
   }

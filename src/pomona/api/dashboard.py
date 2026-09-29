@@ -1,6 +1,5 @@
 import json
 import threading
-from collections.abc import Sequence
 from datetime import date, timedelta
 from typing import Literal
 
@@ -55,15 +54,18 @@ def _where(
     column: str,
     start: str | None,
     end: str | None,
-    conditions: Sequence[str] = (),
-    params: Sequence = (),
+    conditions: list[str] | None = None,
+    params: list | None = None,
 ) -> tuple[str, list]:
     """A `WHERE` clause ANDing `conditions` with an inclusive date range on `column`, and its
     parameters (`params` first, for the placeholders in `conditions`). An empty string when
     there's nothing to filter on, so it can be dropped straight into a query.
+
+    Lists, not any sequence: a bare string would be split into one condition (or one bound
+    parameter) per character.
     """
-    where = list(conditions)
-    all_params = list(params)
+    where = list(conditions or [])
+    all_params = list(params or [])
     if start:
         where.append(f"{column} >= ?")
         all_params.append(start)
@@ -418,13 +420,12 @@ def workouts(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> list[dict]:
-    where_sql, params = _where(
-        "start_local_date",
-        start,
-        end,
-        ["activity_type = ?"] if activity_type else [],
-        [activity_type] if activity_type else [],
-    )
+    conditions: list[str] = []
+    condition_params: list = []
+    if activity_type:
+        conditions.append("activity_type = ?")
+        condition_params.append(activity_type)
+    where_sql, params = _where("start_local_date", start, end, conditions, condition_params)
 
     rows = conn.execute(
         f"""
@@ -840,12 +841,12 @@ def _previous_period(start: str | None, end: str | None) -> tuple[str, str] | No
 def _overview_stats(conn, start: str | None, end: str | None) -> dict:
     """The overview's summary stats for one date range -- see `overview`."""
 
-    def records_row(select: str, conditions: list[str], params: list):
+    def fetch_row(select: str, conditions: list[str], params: list, table: str = "records"):
         where_sql, all_params = _where("start_local_date", start, end, conditions, params)
-        return conn.execute(f"SELECT {select} FROM records {where_sql}", all_params).fetchone()
+        return conn.execute(f"SELECT {select} FROM {table} {where_sql}", all_params).fetchone()
 
     def avg_with_unit(metric_type: str) -> dict | None:
-        row = records_row("AVG(value_num) AS avg, MAX(unit) AS unit", ["type = ?"], [metric_type])
+        row = fetch_row("AVG(value_num) AS avg, MAX(unit) AS unit", ["type = ?"], [metric_type])
         if row is None or row["avg"] is None:
             return None
         return {"value": row["avg"], "unit": row["unit"]}
@@ -855,17 +856,14 @@ def _overview_stats(conn, start: str | None, end: str | None) -> dict:
         sum(daily_step_totals.values()) / len(daily_step_totals) if daily_step_totals else None
     )
     avg_weight = avg_with_unit(BODY_MASS)
-    avg_resting_hr = records_row("AVG(value_num)", ["type = ?"], [RESTING_HR])[0]
-    workouts_where_sql, workouts_params = _where("start_local_date", start, end)
-    workout_count = conn.execute(
-        f"SELECT COUNT(*) FROM workouts {workouts_where_sql}", workouts_params
-    ).fetchone()[0]
+    avg_resting_hr = fetch_row("AVG(value_num)", ["type = ?"], [RESTING_HR])[0]
+    workout_count = fetch_row("COUNT(*)", [], [], table="workouts")[0]
     avg_vo2_max = avg_with_unit(VO2_MAX)
     nightly_seconds = _nightly_sleep_seconds(conn, start, end)
     avg_sleep_hours = (
         sum(nightly_seconds.values()) / len(nightly_seconds) / 3600.0 if nightly_seconds else None
     )
-    bp_row = records_row(BP_AVERAGES, ["type IN (?, ?)"], [BP_SYSTOLIC, BP_DIASTOLIC])
+    bp_row = fetch_row(BP_AVERAGES, ["type IN (?, ?)"], [BP_SYSTOLIC, BP_DIASTOLIC])
     avg_blood_pressure = (
         {"systolic": bp_row["systolic"], "diastolic": bp_row["diastolic"]}
         if bp_row["systolic"] is not None or bp_row["diastolic"] is not None
@@ -992,15 +990,23 @@ def meta(conn: DbDep) -> dict:
     the last Record outside every relative range. Every dated page waits on this endpoint at
     load and on each window refocus, so it's read from `ingest_meta`, where ingest stores it,
     rather than recomputed per request -- the `records` part is a full index scan on a real
-    export. A database ingested before that key existed falls back to computing it live, once
-    per ingest (see `_data_span`).
+    export. A database ingested before that key existed falls back to computing it live.
 
     `ingested_at` is when `pomona ingest` last ran, as a unix epoch. Either is null
     on an empty or partially built database.
     """
-    _, latest_date = _data_span(conn)
-    ingested_at = conn.execute("SELECT value FROM ingest_meta WHERE key = 'ingested_at'").fetchone()
+    stored = {
+        row["key"]: row["value"]
+        for row in conn.execute(
+            "SELECT key, value FROM ingest_meta WHERE key IN ('latest_date', 'ingested_at')"
+        )
+    }
+    if "latest_date" in stored:
+        # Stored as "" when the ingest had no dated data at all.
+        latest_date = stored["latest_date"] or None
+    else:
+        latest_date = latest_data_date(conn)
     return {
         "latest_date": latest_date,
-        "ingested_at": int(ingested_at["value"]) if ingested_at else None,
+        "ingested_at": int(stored["ingested_at"]) if "ingested_at" in stored else None,
     }
