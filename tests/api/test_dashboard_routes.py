@@ -70,11 +70,16 @@ class TestMetricTimeseries:
         assert response.status_code == 200
         assert response.json()["points"] == []
 
-    def test_invalid_bucket_returns_400(self, client):
-        response = client.get(
-            "/api/metrics/HKQuantityTypeIdentifierStepCount/timeseries?bucket=year"
-        )
-        assert response.status_code == 400
+    def test_invalid_bucket_is_a_422(self, client):
+        # Every endpoint that takes a bucket validates it the same way, from the annotation.
+        for path in [
+            "/api/metrics/HKQuantityTypeIdentifierStepCount/timeseries",
+            "/api/sleep",
+            "/api/blood-pressure",
+            "/api/category-metrics/HKCategoryTypeIdentifierMindfulSession/timeseries?mode=count",
+        ]:
+            sep = "&" if "?" in path else "?"
+            assert client.get(f"{path}{sep}bucket=year").status_code == 422, path
 
     def test_unit_is_the_most_common_one_within_the_requested_window(self, client, seeded_db_path):
         # A metric's unit can change over time (weight logged in lb, then kg). The label
@@ -444,11 +449,11 @@ class TestCategoryMetrics:
         )
         assert response.status_code == 422
 
-    def test_invalid_mode_is_a_400(self, client):
+    def test_invalid_mode_is_a_422(self, client):
         response = client.get(
             "/api/category-metrics/HKCategoryTypeIdentifierMindfulSession/timeseries?mode=bogus"
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
 
 class TestActivitySummary:

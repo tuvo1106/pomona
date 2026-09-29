@@ -1,6 +1,7 @@
 import json
 import threading
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -19,10 +20,11 @@ from pomona.waveform import downsample_minmax
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
-VALID_BUCKETS = {"day", "week", "month"}
+# Validated by FastAPI from the annotation, so an unknown value is a 422 before the handler runs.
+Bucket = Literal["day", "week", "month"]
 
 
-def _bucket_expr(column: str, bucket: str) -> str:
+def _bucket_expr(column: str, bucket: Bucket) -> str:
     """SQL bucket expression for the (non-dedup) endpoints that aggregate directly in SQL."""
     if bucket == "week":
         return f"date({column}, '-' || ((strftime('%w', {column}) + 6) % 7) || ' days')"
@@ -48,18 +50,91 @@ LOINC_SYSTEMS = frozenset(
 )
 
 
-def _date_range_where(
-    column: str, start: str | None, end: str | None
-) -> tuple[list[str], list[str]]:
-    where: list[str] = []
-    params: list[str] = []
+def _where(
+    column: str,
+    start: str | None,
+    end: str | None,
+    conditions: list[str] | None = None,
+    params: list | None = None,
+) -> tuple[str, list]:
+    """A `WHERE` clause ANDing `conditions` with an inclusive date range on `column`, and its
+    parameters (`params` first, for the placeholders in `conditions`). An empty string when
+    there's nothing to filter on, so it can be dropped straight into a query.
+
+    Lists, not any sequence: a bare string would be split into one condition (or one bound
+    parameter) per character.
+    """
+    where = list(conditions or [])
+    all_params = list(params or [])
     if start:
         where.append(f"{column} >= ?")
-        params.append(start)
+        all_params.append(start)
     if end:
         where.append(f"{column} <= ?")
-        params.append(end)
-    return where, params
+        all_params.append(end)
+    return (f"WHERE {' AND '.join(where)}" if where else ""), all_params
+
+
+ASLEEP = "value_text LIKE 'HKCategoryValueSleepAnalysisAsleep%'"
+
+# Systolic and diastolic are separate record types; averaged side by side over one scan.
+BP_AVERAGES = f"""
+    AVG(CASE WHEN type = '{BP_SYSTOLIC}' THEN value_num END) AS systolic,
+    AVG(CASE WHEN type = '{BP_DIASTOLIC}' THEN value_num END) AS diastolic
+"""
+
+
+def _deduped_totals(
+    conn, metric_type: str, start: str | None, end: str | None, bucket: Bucket
+) -> dict[str, float]:
+    """A cumulative metric's total per bucket, deduplicated across sources first.
+
+    Cumulative metrics (steps, energy, distance, ...) are independently logged by every
+    source that tracks them, so a naive SUM double-counts overlapping devices -- dedupe by
+    time window first. See dedup.py.
+    """
+    where_sql, params = _where(
+        "start_local_date", start, end, ["type = ?", "value_num IS NOT NULL"], [metric_type]
+    )
+    rows = conn.execute(
+        f"SELECT start_date, end_date, value_num, start_local_date "
+        f"FROM records {where_sql} ORDER BY start_date",
+        params,
+    ).fetchall()
+    intervals = [
+        IntervalRecord(
+            row["start_date"], row["end_date"], row["value_num"], row["start_local_date"]
+        )
+        for row in rows
+    ]
+    return sum_by_bucket(dedup_nonoverlapping(intervals), bucket)
+
+
+def _nightly_sleep_seconds(conn, start: str | None, end: str | None) -> dict[str, float]:
+    """Seconds asleep per night, keyed by the evening the night began (see nightly_totals).
+
+    Deduplicated the same way cumulative metrics are (see dedup.py): iPhone and Watch can
+    both log overlapping sleep segments for the same night, so a naive SUM would double-count
+    the overlap.
+    """
+    where_sql, params = _where(
+        "start_local_date", start, end, ["type = ?", ASLEEP], [SLEEP_ANALYSIS]
+    )
+    rows = conn.execute(
+        f"SELECT start_date, end_date, start_local_date FROM records "
+        f"{where_sql} ORDER BY start_date",
+        params,
+    ).fetchall()
+    intervals = [
+        IntervalRecord(
+            row["start_date"],
+            row["end_date"],
+            row["end_date"] - row["start_date"],
+            row["start_local_date"],
+        )
+        for row in rows
+    ]
+    return nightly_totals(dedup_nonoverlapping(intervals))
 
 
 def _parse_day(value: str | None) -> date | None:
@@ -74,19 +149,23 @@ def _parse_day(value: str | None) -> date | None:
         return None
 
 
-def _bucket_last_day(first_day: date, bucket: str) -> date:
+def _next_month(day: date) -> date:
+    """The 1st of the month after `day`'s."""
+    return (day.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+
+def _bucket_last_day(first_day: date, bucket: Bucket) -> date:
     """The last calendar day covered by the bucket that starts on `first_day`."""
     if bucket == "week":
         return first_day + timedelta(days=6)
     if bucket == "month":
-        next_month = (first_day.replace(day=28) + timedelta(days=4)).replace(day=1)
-        return next_month - timedelta(days=1)
+        return _next_month(first_day) - timedelta(days=1)
     return first_day
 
 
 def _mark_partial_buckets(
     points: list[dict],
-    bucket: str,
+    bucket: Bucket,
     start: str | None,
     end: str | None,
     latest: str | None,
@@ -156,9 +235,7 @@ def metric_types(conn: DbDep, start: str | None = None, end: str | None = None) 
     """Distinct record types with counts/date-range. Pass start/end to restrict to types that
     actually have data in that window -- used to hide empty charts for the selected time range.
     """
-    where, params = _date_range_where("start_local_date", start, end)
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
+    where_sql, params = _where("start_local_date", start, end)
     rows = conn.execute(
         f"""
         SELECT type, COUNT(*) AS count, MAX(unit) AS unit,
@@ -179,61 +256,44 @@ def metric_timeseries(
     conn: DbDep,
     start: str | None = None,
     end: str | None = None,
-    bucket: str = "day",
+    bucket: Bucket = "day",
 ) -> dict:
-    if bucket not in VALID_BUCKETS:
-        raise HTTPException(400, "bucket must be one of: day, week, month")
-
-    where = ["type = ?", "value_num IS NOT NULL"]
-    params: list = [metric_type]
-    range_where, range_params = _date_range_where("start_local_date", start, end)
-    where += range_where
-    params += range_params
-    where_sql = " AND ".join(where)
-
     if aggregation_mode(metric_type) == "sum":
-        # Cumulative metrics (steps, energy, distance, ...) are independently logged by every
-        # source that tracks them, so a naive SUM double-counts overlapping devices -- dedupe
-        # by time window first. See dedup.py.
-        rows = conn.execute(
-            f"SELECT start_date, end_date, value_num, start_local_date "
-            f"FROM records WHERE {where_sql} ORDER BY start_date",
-            params,
-        ).fetchall()
-        intervals = [
-            IntervalRecord(
-                row["start_date"], row["end_date"], row["value_num"], row["start_local_date"]
-            )
-            for row in rows
-        ]
-        totals = sum_by_bucket(dedup_nonoverlapping(intervals), bucket)
+        totals = _deduped_totals(conn, metric_type, start, end, bucket)
         points = [{"date": date, "value": value} for date, value in sorted(totals.items())]
         earliest, latest = _data_span(conn)
         _mark_partial_buckets(points, bucket, start, end, latest, earliest)
     else:
-        bucket_expr = _bucket_expr("start_local_date", bucket)
-        sql = f"""
-            SELECT {bucket_expr} AS date, AVG(value_num) AS value
+        where_sql, params = _where(
+            "start_local_date", start, end, ["type = ?", "value_num IS NOT NULL"], [metric_type]
+        )
+        rows = conn.execute(
+            f"""
+            SELECT {_bucket_expr("start_local_date", bucket)} AS date, AVG(value_num) AS value
             FROM records
-            WHERE {where_sql}
+            {where_sql}
             GROUP BY date
             ORDER BY date
-        """
-        rows = conn.execute(sql, params).fetchall()
+            """,
+            params,
+        ).fetchall()
         points = [{"date": row["date"], "value": row["value"], "partial": None} for row in rows]
 
     # Scoped to the same window as the points, and picking the most common unit rather than
     # an arbitrary one: a metric's unit can change over time (weight logged in lb, then kg),
     # and labelling the chart with a unit from outside the plotted range would be wrong.
+    unit_where_sql, unit_params = _where(
+        "start_local_date", start, end, ["type = ?", "unit IS NOT NULL"], [metric_type]
+    )
     unit_row = conn.execute(
         f"""
         SELECT unit FROM records
-        WHERE {" AND ".join(["type = ?", "unit IS NOT NULL", *range_where])}
+        {unit_where_sql}
         GROUP BY unit
         ORDER BY COUNT(*) DESC
         LIMIT 1
         """,
-        [metric_type, *range_params],
+        unit_params,
     ).fetchone()
 
     return {
@@ -247,7 +307,7 @@ def metric_timeseries(
 
 @router.get("/sleep")
 def sleep(
-    conn: DbDep, start: str | None = None, end: str | None = None, bucket: str = "day"
+    conn: DbDep, start: str | None = None, end: str | None = None, bucket: Bucket = "day"
 ) -> dict:
     """Hours asleep per night, from 'Asleep*' sleep-analysis segments.
 
@@ -257,35 +317,8 @@ def sleep(
     in that bucket (total / nights with any sleep logged), not the bucket's sum -- nobody
     thinks of sleep as "45 hours this week". Same per-night averaging as the overview's
     avg_sleep_hours, so the two agree.
-
-    Deduplicated the same way cumulative metrics are (see dedup.py): iPhone and Watch can
-    both log overlapping sleep segments for the same night, so a naive SUM would double-count
-    the overlap.
     """
-    if bucket not in VALID_BUCKETS:
-        raise HTTPException(400, "bucket must be one of: day, week, month")
-
-    where = ["type = ?", "value_text LIKE 'HKCategoryValueSleepAnalysisAsleep%'"]
-    params: list = [SLEEP_ANALYSIS]
-    range_where, range_params = _date_range_where("start_local_date", start, end)
-    where += range_where
-    params += range_params
-
-    rows = conn.execute(
-        f"SELECT start_date, end_date, start_local_date FROM records "
-        f"WHERE {' AND '.join(where)} ORDER BY start_date",
-        params,
-    ).fetchall()
-    intervals = [
-        IntervalRecord(
-            row["start_date"],
-            row["end_date"],
-            row["end_date"] - row["start_date"],
-            row["start_local_date"],
-        )
-        for row in rows
-    ]
-    nightly_seconds = nightly_totals(dedup_nonoverlapping(intervals))
+    nightly_seconds = _nightly_sleep_seconds(conn, start, end)
     nights_by_bucket: dict[str, list[float]] = {}
     for night, seconds in nightly_seconds.items():
         nights_by_bucket.setdefault(bucket_local_date(night, bucket), []).append(seconds)
@@ -298,25 +331,16 @@ def sleep(
 
 @router.get("/blood-pressure")
 def blood_pressure(
-    conn: DbDep, start: str | None = None, end: str | None = None, bucket: str = "day"
+    conn: DbDep, start: str | None = None, end: str | None = None, bucket: Bucket = "day"
 ) -> dict:
-    if bucket not in VALID_BUCKETS:
-        raise HTTPException(400, "bucket must be one of: day, week, month")
-
-    where = ["type IN (?, ?)"]
-    params: list = [BP_SYSTOLIC, BP_DIASTOLIC]
-    range_where, range_params = _date_range_where("start_local_date", start, end)
-    where += range_where
-    params += range_params
-
-    bucket_expr = _bucket_expr("start_local_date", bucket)
+    where_sql, params = _where(
+        "start_local_date", start, end, ["type IN (?, ?)"], [BP_SYSTOLIC, BP_DIASTOLIC]
+    )
     rows = conn.execute(
         f"""
-        SELECT {bucket_expr} AS date,
-               AVG(CASE WHEN type = '{BP_SYSTOLIC}' THEN value_num END) AS systolic,
-               AVG(CASE WHEN type = '{BP_DIASTOLIC}' THEN value_num END) AS diastolic
+        SELECT {_bucket_expr("start_local_date", bucket)} AS date, {BP_AVERAGES}
         FROM records
-        WHERE {" AND ".join(where)}
+        {where_sql}
         GROUP BY date
         ORDER BY date
         """,
@@ -335,10 +359,10 @@ def blood_pressure(
 def category_metric_timeseries(
     metric_type: str,
     conn: DbDep,
-    mode: str,
+    mode: Literal["count", "duration"],
     start: str | None = None,
     end: str | None = None,
-    bucket: str = "day",
+    bucket: Bucket = "day",
     value_prefix: str | None = None,
 ) -> dict:
     """Timeseries for HealthKit *category* types (no numeric value), e.g. Apple Stand Hour,
@@ -353,31 +377,25 @@ def category_metric_timeseries(
     record per hour *whether or not* the user actually stood ('...Stood' vs '...Idle'), so an
     unfiltered count would report 24 "stand hours" a day regardless of how many were real.
     """
-    if bucket not in VALID_BUCKETS:
-        raise HTTPException(400, "bucket must be one of: day, week, month")
-    if mode not in ("count", "duration"):
-        raise HTTPException(400, "mode must be one of: count, duration")
-
-    where = ["type = ?"]
-    params: list = [metric_type]
+    conditions = ["type = ?"]
+    condition_params = [metric_type]
     if value_prefix:
-        where.append("value_text LIKE ?")
-        params.append(f"{value_prefix}%")
-    range_where, range_params = _date_range_where("start_local_date", start, end)
-    where += range_where
-    params += range_params
+        conditions.append("value_text LIKE ?")
+        condition_params.append(f"{value_prefix}%")
+    where_sql, params = _where("start_local_date", start, end, conditions, condition_params)
 
     value_expr = "COUNT(*)" if mode == "count" else "SUM(end_date - start_date) / 60.0"
     unit = "events" if mode == "count" else "min"
-    bucket_expr = _bucket_expr("start_local_date", bucket)
-    sql = f"""
-        SELECT {bucket_expr} AS date, {value_expr} AS value
+    rows = conn.execute(
+        f"""
+        SELECT {_bucket_expr("start_local_date", bucket)} AS date, {value_expr} AS value
         FROM records
-        WHERE {" AND ".join(where)}
+        {where_sql}
         GROUP BY date
         ORDER BY date
-    """
-    rows = conn.execute(sql, params).fetchall()
+        """,
+        params,
+    ).fetchall()
     # Counts and durations are sums per bucket, so a partial bucket dips like any other sum.
     points = [{"date": row["date"], "value": row["value"]} for row in rows]
     earliest, latest = _data_span(conn)
@@ -402,11 +420,12 @@ def workouts(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> list[dict]:
-    where, params = _date_range_where("start_local_date", start, end)
+    conditions: list[str] = []
+    condition_params: list = []
     if activity_type:
-        where.append("activity_type = ?")
-        params.append(activity_type)
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        conditions.append("activity_type = ?")
+        condition_params.append(activity_type)
+    where_sql, params = _where("start_local_date", start, end, conditions, condition_params)
 
     rows = conn.execute(
         f"""
@@ -426,9 +445,7 @@ def workouts(
 
 @router.get("/workouts/summary")
 def workouts_summary(conn: DbDep, start: str | None = None, end: str | None = None) -> list[dict]:
-    where, params = _date_range_where("start_local_date", start, end)
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
+    where_sql, params = _where("start_local_date", start, end)
     rows = conn.execute(
         f"""
         SELECT activity_type, COUNT(*) AS count,
@@ -456,9 +473,7 @@ def routes(conn: DbDep, start: str | None = None, end: str | None = None) -> lis
     join, and a missing distance is unknown, not zero. Callers render the absence rather
     than substituting a number, since "0.0 mi" reads as a real measurement of standing still.
     """
-    where, params = _date_range_where("wr.start_local_date", start, end)
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
+    where_sql, params = _where("wr.start_local_date", start, end)
     rows = conn.execute(
         f"""
         SELECT wr.id, wr.workout_id, w.activity_type, wr.start_local_date, wr.points_json,
@@ -494,9 +509,7 @@ def ecg_recordings(conn: DbDep, start: str | None = None, end: str | None = None
     into a range-filtered list would bloat the payload for data that's never rendered. See
     /api/ecg/{recording_id} for the downsampled waveform of a single recording.
     """
-    where, params = _date_range_where("recorded_local_date", start, end)
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
+    where_sql, params = _where("recorded_local_date", start, end)
     rows = conn.execute(
         f"""
         SELECT id, recorded_date, recorded_local_date, classification, symptoms,
@@ -544,9 +557,7 @@ def ecg_recording(
 
 @router.get("/activity-summary")
 def activity_summary(conn: DbDep, start: str | None = None, end: str | None = None) -> list[dict]:
-    where, params = _date_range_where("date", start, end)
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
+    where_sql, params = _where("date", start, end)
     rows = conn.execute(
         f"SELECT * FROM activity_summaries {where_sql} ORDER BY date", params
     ).fetchall()
@@ -570,14 +581,14 @@ def clinical(
         # `IN ()` is a SQLite syntax error, so an empty allowlist would turn every request into a
         # 500 rather than into an empty page. Nothing can be served, which is what this returns.
         return []
-    where = [f"resource_type IN ({', '.join('?' * len(served))})"]
-    params: list = [*served]
+    conditions = [f"resource_type IN ({', '.join('?' * len(served))})"]
+    condition_params = [*served]
     if resource_type:
-        where.append("resource_type = ?")
-        params.append(resource_type)
-    range_where, range_params = _date_range_where("date(effective_date, 'unixepoch')", start, end)
-    where += range_where
-    params += range_params
+        conditions.append("resource_type = ?")
+        condition_params.append(resource_type)
+    where_sql, params = _where(
+        "date(effective_date, 'unixepoch')", start, end, conditions, condition_params
+    )
 
     # raw_json only for Observations: it's the one type whose reference range and components
     # the page uses, and the other types' raw payloads (documents especially) can be large.
@@ -587,7 +598,7 @@ def clinical(
                value_num, value_unit, value_text, effective_date, category, results_json,
                CASE WHEN resource_type = 'Observation' THEN raw_json END AS raw_json
         FROM clinical_records
-        WHERE {" AND ".join(where)}
+        {where_sql}
         ORDER BY effective_date DESC
         """,
         params,
@@ -725,10 +736,6 @@ RUNNING = "HKWorkoutActivityTypeRunning"
 _METRES_PER_UNIT = {"m": 1.0, "km": 1000.0, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344}
 
 
-def _next_month(day: date) -> date:
-    return (day.replace(day=28) + timedelta(days=4)).replace(day=1)
-
-
 @router.get("/workouts/running")
 def running_mileage(conn: DbDep, start: str | None = None, end: str | None = None) -> dict:
     """Running distance over the range, in total and by calendar month.
@@ -749,17 +756,16 @@ def running_mileage(conn: DbDep, start: str | None = None, end: str | None = Non
     a run shows as a gap rather than disappearing. Months cut short are marked `partial` the
     same way the cumulative charts' buckets are (see `_mark_partial_buckets`).
     """
-    where, params = _date_range_where("start_local_date", start, end)
-    where.insert(0, "activity_type = ?")
+    where_sql, params = _where("start_local_date", start, end, ["activity_type = ?"], [RUNNING])
     rows = conn.execute(
         f"""
         SELECT strftime('%Y-%m-01', start_local_date) AS month,
                total_distance, total_distance_unit
         FROM workouts
-        WHERE {" AND ".join(where)}
+        {where_sql}
         ORDER BY start_local_date
         """,
-        [RUNNING, *params],
+        params,
     ).fetchall()
 
     measured = [
@@ -834,80 +840,33 @@ def _previous_period(start: str | None, end: str | None) -> tuple[str, str] | No
 
 def _overview_stats(conn, start: str | None, end: str | None) -> dict:
     """The overview's summary stats for one date range -- see `overview`."""
-    range_where, range_params = _date_range_where("start_local_date", start, end)
 
-    def and_range(*base: str) -> str:
-        return " AND ".join([*base, *range_where])
-
-    def scalar(sql: str, extra_params: list) -> float | None:
-        row = conn.execute(sql, [*extra_params, *range_params]).fetchone()
-        return row[0] if row else None
+    def fetch_row(select: str, conditions: list[str], params: list, table: str = "records"):
+        where_sql, all_params = _where("start_local_date", start, end, conditions, params)
+        return conn.execute(f"SELECT {select} FROM {table} {where_sql}", all_params).fetchone()
 
     def avg_with_unit(metric_type: str) -> dict | None:
-        row = conn.execute(
-            f"SELECT AVG(value_num) AS avg, MAX(unit) AS unit "
-            f"FROM records WHERE {and_range('type = ?')}",
-            [metric_type, *range_params],
-        ).fetchone()
+        row = fetch_row("AVG(value_num) AS avg, MAX(unit) AS unit", ["type = ?"], [metric_type])
         if row is None or row["avg"] is None:
             return None
         return {"value": row["avg"], "unit": row["unit"]}
 
-    step_rows = conn.execute(
-        f"SELECT start_date, end_date, value_num, start_local_date "
-        f"FROM records WHERE {and_range('type = ?', 'value_num IS NOT NULL')} ORDER BY start_date",
-        [STEP_COUNT, *range_params],
-    ).fetchall()
-    step_intervals = [
-        IntervalRecord(
-            row["start_date"], row["end_date"], row["value_num"], row["start_local_date"]
-        )
-        for row in step_rows
-    ]
-    daily_step_totals = sum_by_bucket(dedup_nonoverlapping(step_intervals), "day")
+    daily_step_totals = _deduped_totals(conn, STEP_COUNT, start, end, "day")
     avg_daily_steps = (
         sum(daily_step_totals.values()) / len(daily_step_totals) if daily_step_totals else None
     )
     avg_weight = avg_with_unit(BODY_MASS)
-    avg_resting_hr = scalar(
-        f"SELECT AVG(value_num) FROM records WHERE {and_range('type = ?')}",
-        [RESTING_HR],
-    )
-    workout_count = scalar(f"SELECT COUNT(*) FROM workouts WHERE {and_range('1=1')}", [])
+    avg_resting_hr = fetch_row("AVG(value_num)", ["type = ?"], [RESTING_HR])[0]
+    workout_count = fetch_row("COUNT(*)", [], [], table="workouts")[0]
     avg_vo2_max = avg_with_unit(VO2_MAX)
-    # Deduplicated the same way as avg_daily_steps above -- iPhone and Watch can log
-    # overlapping sleep segments for the same night (see dedup.py).
-    asleep_condition = "value_text LIKE 'HKCategoryValueSleepAnalysisAsleep%'"
-    sleep_rows = conn.execute(
-        f"SELECT start_date, end_date, start_local_date FROM records "
-        f"WHERE {and_range('type = ?', asleep_condition)} ORDER BY start_date",
-        [SLEEP_ANALYSIS, *range_params],
-    ).fetchall()
-    sleep_intervals = [
-        IntervalRecord(
-            row["start_date"],
-            row["end_date"],
-            row["end_date"] - row["start_date"],
-            row["start_local_date"],
-        )
-        for row in sleep_rows
-    ]
-    nightly_seconds = nightly_totals(dedup_nonoverlapping(sleep_intervals))
+    nightly_seconds = _nightly_sleep_seconds(conn, start, end)
     avg_sleep_hours = (
         sum(nightly_seconds.values()) / len(nightly_seconds) / 3600.0 if nightly_seconds else None
     )
-    bp_row = conn.execute(
-        f"""
-        SELECT AVG(CASE WHEN type = '{BP_SYSTOLIC}' THEN value_num END) AS systolic,
-               AVG(CASE WHEN type = '{BP_DIASTOLIC}' THEN value_num END) AS diastolic
-        FROM records
-        WHERE {and_range("type IN (?, ?)")}
-        """,
-        [BP_SYSTOLIC, BP_DIASTOLIC, *range_params],
-    ).fetchone()
+    bp_row = fetch_row(BP_AVERAGES, ["type IN (?, ?)"], [BP_SYSTOLIC, BP_DIASTOLIC])
     avg_blood_pressure = (
         {"systolic": bp_row["systolic"], "diastolic": bp_row["diastolic"]}
-        if bp_row and (bp_row["systolic"] is not None or bp_row["diastolic"] is not None)
+        if bp_row["systolic"] is not None or bp_row["diastolic"] is not None
         else None
     )
     avg_hrv = avg_with_unit(HRV_SDNN)

@@ -16,6 +16,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   silently left out. No schema change, so no need to delete your database.
 - **"This year" range** — calendar year to date, alongside the rolling "Last year".
 
+### Changed
+
+- **An invalid `bucket` or `mode` API parameter is now a 422, not a 400,** the same status the API
+  already gave every other invalid parameter. Only matters if you call the API directly.
+
 ### Removed
 
 - **The `daily_resting_hr` and `daily_weight` SQL views.** Nothing in the app read them. Your next
