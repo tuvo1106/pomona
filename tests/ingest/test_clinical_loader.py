@@ -238,9 +238,9 @@ class TestLoadClinicalRecords:
         assert load_clinical_records(writable_conn, unknown_dir) == (0, 0)
         assert _row(writable_conn, "weird-1") is None
 
-    def test_bad_files_are_skipped_not_fatal(self, writable_conn, tmp_path):
+    def test_unusable_files_are_skipped_not_fatal(self, writable_conn, tmp_path, caplog):
         # The whole ingest is one transaction, so a raise here would roll back export.xml
-        # and every other side-loader too. Each of these must be skipped and counted instead.
+        # and every other side-loader too. Each of these must be skipped, counted and named.
         clinical_dir = tmp_path / "clinical-records"
         clinical_dir.mkdir()
         (clinical_dir / "Observation-good.json").write_text(
@@ -249,14 +249,98 @@ class TestLoadClinicalRecords:
         (clinical_dir / "truncated.json").write_text('{"resourceType": "Observ')
         (clinical_dir / "not-utf8.json").write_bytes(b"\xff\xfe\x00garbage")
         (clinical_dir / "top-level-array.json").write_text("[]")
-        (clinical_dir / "Observation-bad-code.json").write_text(
-            json.dumps({"resourceType": "Observation", "id": "bad-code", "code": "LDL"})
-        )
-        (clinical_dir / "DiagnosticReport-bad-result.json").write_text(
-            json.dumps({"resourceType": "DiagnosticReport", "id": "dr-bad", "result": ["x"]})
-        )
+        (clinical_dir / "a-directory.json").mkdir()
 
         loaded, skipped = load_clinical_records(writable_conn, clinical_dir)
 
-        assert (loaded, skipped) == (1, 5)
+        assert (loaded, skipped) == (1, 4)
         assert _row(writable_conn, "good")["code_text"] == "LDL"
+        for name in ["truncated.json", "not-utf8.json", "top-level-array.json", "a-directory.json"]:
+            assert name in caplog.text
+
+    def test_utf8_bom_is_read_not_skipped(self, writable_conn, tmp_path):
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        (clinical_dir / "Observation-bom.json").write_bytes(
+            b"\xef\xbb\xbf"
+            + json.dumps(
+                {"resourceType": "Observation", "id": "bom", "valueQuantity": {"unit": "\u00b5g"}}
+            ).encode()
+        )
+        assert load_clinical_records(writable_conn, clinical_dir) == (1, 0)
+        assert _row(writable_conn, "bom")["value_unit"] == "\u00b5g"
+
+    def test_wrong_typed_fields_flatten_to_none_and_the_rest_loads(self, writable_conn, tmp_path):
+        # Every one of these used to raise (in the extractor, or binding the value to SQLite).
+        # The resource is still worth keeping: its well-typed fields and its raw_json.
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        (clinical_dir / "Observation-odd.json").write_text(
+            json.dumps(
+                {
+                    "resourceType": "Observation",
+                    "id": "odd",
+                    "code": "LDL",
+                    "status": {"a": 1},
+                    "valueQuantity": {"value": [95], "unit": "mg/dL"},
+                    "valueString": ["x"],
+                    "category": ["Laboratory"],
+                    "effectiveDateTime": 20260101,
+                    "issued": "2026-01-02T00:00:00Z",
+                }
+            )
+        )
+        (clinical_dir / "Observation-list-id.json").write_text(
+            json.dumps({"resourceType": "Observation", "id": ["a"], "valueQuantity": {"value": 1}})
+        )
+        (clinical_dir / "Observation-huge.json").write_text(
+            json.dumps(
+                {"resourceType": "Observation", "id": "huge", "valueQuantity": {"value": 10**30}}
+            )
+        )
+        (clinical_dir / "DiagnosticReport-odd.json").write_text(
+            json.dumps(
+                {
+                    "resourceType": "DiagnosticReport",
+                    "id": "dr-odd",
+                    "result": ["x", {"reference": 5, "display": "HDL"}],
+                }
+            )
+        )
+        (clinical_dir / "list-type.json").write_text(json.dumps({"resourceType": ["Observation"]}))
+
+        assert load_clinical_records(writable_conn, clinical_dir) == (4, 0)
+
+        odd = _row(writable_conn, "odd")
+        assert odd["code_text"] is None
+        assert odd["status"] is None
+        assert odd["value_num"] is None
+        assert odd["value_unit"] == "mg/dL"
+        assert odd["value_text"] is None
+        assert odd["category"] is None
+        assert odd["effective_date"] is None
+        assert odd["recorded_date"] is not None
+        assert json.loads(odd["raw_json"])["code"] == "LDL"
+        # A non-string id falls back to the filename stem, like a missing one.
+        assert _row(writable_conn, "Observation-list-id")["value_num"] == 1
+        assert _row(writable_conn, "huge")["value_num"] == 1e30
+        results = json.loads(_row(writable_conn, "dr-odd")["results_json"])
+        assert [r["display"] for r in results] == [None, "HDL"]
+
+    def test_duplicate_type_and_id_each_keep_their_own_fields(self, writable_conn, tmp_path):
+        # Two providers can both export Observation/1 (ADR-0003). Each row must carry its
+        # own flattened values, not the last file's.
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        for name, text in [("a", "LDL"), ("b", "HDL")]:
+            (clinical_dir / f"Observation-{name}.json").write_text(
+                json.dumps({"resourceType": "Observation", "id": "1", "code": {"text": text}})
+            )
+        load_clinical_records(writable_conn, clinical_dir)
+        rows = writable_conn.execute(
+            "SELECT code_text, raw_json FROM clinical_records ORDER BY id"
+        ).fetchall()
+        assert [(r["code_text"], json.loads(r["raw_json"])["code"]["text"]) for r in rows] == [
+            ("LDL", "LDL"),
+            ("HDL", "HDL"),
+        ]

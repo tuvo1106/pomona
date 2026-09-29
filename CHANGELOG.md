@@ -19,10 +19,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **A malformed clinical record no longer aborts the whole ingest.** One bad file in
-  `clinical-records/` (invalid JSON, or a resource with an unexpected shape) used to roll back
-  everything, `export.xml` included. It's now skipped and counted, the same way bad GPX and ECG
-  files already were, and the count is shown in the ingest summary. No schema change, so no
-  need to delete your database.
+  `clinical-records/` used to roll back everything, `export.xml` included. A file that can't be
+  read or isn't valid JSON is now skipped, named on stderr and counted in the ingest summary,
+  the same way bad GPX and ECG files already were. A record with a field of an unexpected type
+  still loads, with that field left empty. Files saved with a UTF-8 byte-order mark now load.
+- **Two clinical records with the same type and id each keep their own values.** Previously both
+  were stored with the second file's code, value and status, so a lab result could show another
+  record's value. No schema change, so no need to delete your database.
 
 ## [0.1.0] - 2026-09-25
 
