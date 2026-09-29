@@ -84,7 +84,10 @@ export interface RunningMileage {
   unit: string | null
   total_distance: number | null
   runs: number
-  points: { period: string; distance: number; runs: number }[]
+  /** Runs counted in `runs` whose distance couldn't be used (none recorded, or no length
+   * unit), so they add nothing to `total_distance`. */
+  unmeasured_runs: number
+  points: { date: string; distance: number; runs: number; partial?: PartialKind | null }[]
 }
 
 export interface ActivitySummary {

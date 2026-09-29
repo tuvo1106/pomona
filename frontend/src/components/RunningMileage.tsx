@@ -1,4 +1,5 @@
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useMemo } from 'react'
+import { Bar, BarChart, Cell, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { DataCard } from '@/components/DataCard'
 import { useRunningMileage } from '@/hooks/useWorkouts'
@@ -9,7 +10,7 @@ import {
   CHART_GRID_PROPS,
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
-import { formatBucketDate, makeDateLabelFormatter } from '@/lib/formatDate'
+import { makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import type { DateRange } from '@/lib/timeRange'
 
 /** Running distance for the selected range: the total as a headline, and a bar per calendar
@@ -18,11 +19,22 @@ import type { DateRange } from '@/lib/timeRange'
  *
  * The API sums in one unit (converting a history that spans a km/mi settings change), so the
  * headline and the bars always agree with each other.
+ *
+ * A month cut short -- the one still in progress, or one the range or the export starts
+ * partway into -- is drawn faded, the bar-chart form of the dashed tail the line charts use
+ * (see lib/partialBuckets): its short bar is a partial count, not a slow month.
  */
+
+// Opacity of a partial month's bar. Faded, not hidden: the miles are real, just incomplete.
+const PARTIAL_BAR_OPACITY = 0.4
 export function RunningMileage({ range }: { range: DateRange }) {
   const { data, isLoading, error } = useRunningMileage(range)
   const unit = data?.unit ?? ''
   const total = data?.total_distance
+  const tickFormatter = useMemo(
+    () => makeDateTickFormatter(data?.points.map((p) => p.date) ?? [], 'month'),
+    [data],
+  )
 
   return (
     <DataCard
@@ -50,18 +62,26 @@ export function RunningMileage({ range }: { range: DateRange }) {
               across {data.runs.toLocaleString('en-US')} {data.runs === 1 ? 'run' : 'runs'}
             </span>
           </div>
+          {/* Said out loud: otherwise "12 mi across 8 runs" passes for all eight. */}
+          {data.unmeasured_runs > 0 && (
+            <p className="text-muted-foreground -mt-3 text-xs">
+              {data.unmeasured_runs.toLocaleString('en-US')} of these{' '}
+              {data.unmeasured_runs === 1 ? 'has' : 'have'} no recorded distance and{' '}
+              {data.unmeasured_runs === 1 ? "isn't" : "aren't"} in the total.
+            </p>
+          )}
           <div style={{ height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid {...CHART_GRID_PROPS} />
                 <XAxis
-                  dataKey="period"
+                  dataKey="date"
                   tick={CHART_AXIS_TICK}
                   stroke={CHART_AXIS_STROKE}
                   axisLine={false}
                   tickLine={false}
                   minTickGap={16}
-                  tickFormatter={(value: string) => formatBucketDate(value, 'month').split(' ')[0]}
+                  tickFormatter={tickFormatter}
                 />
                 <YAxis {...CHART_Y_AXIS_PROPS} width={40} />
                 <Tooltip
@@ -75,7 +95,14 @@ export function RunningMileage({ range }: { range: DateRange }) {
                   fill="var(--chart-1)"
                   radius={[3, 3, 0, 0]}
                   animationDuration={CHART_ANIMATION_DURATION}
-                />
+                >
+                  {data.points.map((point) => (
+                    <Cell
+                      key={point.date}
+                      fillOpacity={point.partial ? PARTIAL_BAR_OPACITY : 1}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -10,9 +10,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Running mileage** — a dashboard card with the total distance and run count for the
-  selected range, and a bar per month under it. Distances recorded in both km and mi are
-  converted to the unit most runs used, rather than added together. No schema change, so no
-  need to delete your database.
+  selected range, and a bar per month under it, with months still in progress drawn faded.
+  Distances recorded in both km and mi (or m, yd) are converted to the unit most runs used,
+  rather than added together, and runs with no usable distance are called out instead of
+  silently left out. No schema change, so no need to delete your database.
 - **"This year" range** — calendar year to date, alongside the rolling "Last year".
 
 ## [0.1.0] - 2026-09-25

@@ -720,7 +720,13 @@ def _quantity(quantity: object) -> tuple[float | None, str | None]:
 
 
 RUNNING = "HKWorkoutActivityTypeRunning"
-_KM_PER_MILE = 1.609344
+# Length units a workout distance is recorded in, as metres. Anything else is left out of the
+# total rather than guessed at, and counted in `unmeasured_runs` so the card can say so.
+_METRES_PER_UNIT = {"m": 1.0, "km": 1000.0, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344}
+
+
+def _next_month(day: date) -> date:
+    return (day.replace(day=28) + timedelta(days=4)).replace(day=1)
 
 
 @router.get("/workouts/running")
@@ -729,10 +735,19 @@ def running_mileage(conn: DbDep, start: str | None = None, end: str | None = Non
 
     Distances are summed in one unit. A workout's unit is whatever the watch was set to when
     it was recorded, so a history that spans a settings change holds both "mi" and "km", and
-    adding those raw would print a number in neither. The unit used is the one most runs
-    were recorded in (the person's own preference, so the totals read the way their watch
-    does); the others are converted. A run with no distance (a treadmill run the watch lost
-    track of) still counts as a run but adds no miles: null is unknown, not zero.
+    adding those raw would print a number in neither. The total is shown in whichever of mi
+    and km most runs were recorded in -- the person's own preference, so it reads the way
+    their watch does -- with a tie going to the more recent unit; a history in other length
+    units (m, yd) is shown in km. Everything else is converted to it.
+
+    A run whose distance can't be used -- none recorded (a treadmill run the watch lost track
+    of), no unit, or a unit that isn't a length -- still counts as a run but adds nothing:
+    null is unknown, not zero. `unmeasured_runs` says how many, so a total that leaves some
+    out doesn't pass for the whole.
+
+    `points` covers every month of the range that has data, zero-filled, so a month without
+    a run shows as a gap rather than disappearing. Months cut short are marked `partial` the
+    same way the cumulative charts' buckets are (see `_mark_partial_buckets`).
     """
     where, params = _date_range_where("start_local_date", start, end)
     where.insert(0, "activity_type = ?")
@@ -747,51 +762,53 @@ def running_mileage(conn: DbDep, start: str | None = None, end: str | None = Non
         [RUNNING, *params],
     ).fetchall()
 
-    unit_counts: dict[str, int] = {}
-    for row in rows:
-        if row["total_distance"] is not None and row["total_distance_unit"]:
-            unit = row["total_distance_unit"]
-            unit_counts[unit] = unit_counts.get(unit, 0) + 1
-    unit = max(unit_counts, key=lambda u: unit_counts[u]) if unit_counts else None
-
-    def convert(value: float, from_unit: str) -> float | None:
-        if from_unit == unit:
-            return value
-        if from_unit == "km" and unit == "mi":
-            return value / _KM_PER_MILE
-        if from_unit == "mi" and unit == "km":
-            return value * _KM_PER_MILE
-        return None  # an unrecognised unit is left out rather than guessed at
+    measured = [
+        row
+        for row in rows
+        if row["total_distance"] is not None and row["total_distance_unit"] in _METRES_PER_UNIT
+    ]
+    # (count, index of latest run) per unit: the max is the most-used, ties to the latest.
+    usage: dict[str, tuple[int, int]] = {}
+    for i, row in enumerate(measured):
+        if row["total_distance_unit"] in ("mi", "km"):
+            count, _ = usage.get(row["total_distance_unit"], (0, 0))
+            usage[row["total_distance_unit"]] = (count + 1, i)
+    unit = max(usage, key=lambda u: usage[u]) if usage else ("km" if measured else None)
 
     months: dict[str, dict] = {}
-    total = 0.0
     for row in rows:
-        point = months.setdefault(
-            row["month"], {"period": row["month"], "distance": 0.0, "runs": 0}
-        )
+        point = months.setdefault(row["month"], {"date": row["month"], "distance": 0.0, "runs": 0})
         point["runs"] += 1
-        if row["total_distance"] is None or not row["total_distance_unit"]:
-            continue
-        distance = convert(row["total_distance"], row["total_distance_unit"])
-        if distance is not None:
-            point["distance"] += distance
-            total += distance
+    total = 0.0
+    for row in measured:
+        distance = (
+            row["total_distance"] * _METRES_PER_UNIT[row["total_distance_unit"]]
+        ) / _METRES_PER_UNIT[unit]
+        months[row["month"]]["distance"] += distance
+        total += distance
 
-    # A month with no runs is a real zero, and a bar chart that skips it hides the gap: fill
-    # every month between the first and last run.
+    earliest, latest = _data_span(conn)
     if months:
-        first, last = date.fromisoformat(min(months)), date.fromisoformat(max(months))
-        cursor = first
-        while cursor <= last:
+        # From the range's first month to its last, clamped to the data: months before the
+        # export begins or after it ends would be zeros that mean "no data", not "no runs".
+        lower = max((d for d in (start, earliest) if d), default=None)
+        upper = min((d for d in (end, latest) if d), default=None)
+        first = min(min(months), f"{lower[:7]}-01") if lower else min(months)
+        last = max(max(months), f"{upper[:7]}-01") if upper else max(months)
+        cursor = date.fromisoformat(first)
+        while cursor <= date.fromisoformat(last):
             key = cursor.isoformat()
-            months.setdefault(key, {"period": key, "distance": 0.0, "runs": 0})
-            cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+            months.setdefault(key, {"date": key, "distance": 0.0, "runs": 0})
+            cursor = _next_month(cursor)
 
+    points = [months[key] for key in sorted(months)]
+    _mark_partial_buckets(points, "month", start, end, latest, earliest)
     return {
         "unit": unit,
         "total_distance": total if unit else None,
         "runs": len(rows),
-        "points": [months[key] for key in sorted(months)],
+        "unmeasured_runs": len(rows) - len(measured),
+        "points": points,
     }
 
 
