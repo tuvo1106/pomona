@@ -41,13 +41,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or range bound too large to hold (`1e999`, or an integer hundreds of digits long) is now left
   empty. Before, the first made the whole clinical page fail to load and the second aborted the
   ingest. A record nested deeply enough to overflow the parser no longer breaks the page either.
-  Re-run `pomona ingest` to pick up the ingest-side part; no need to delete your database.
-- **Reference ranges and blood-pressure-style panels display more safely.** A range whose low and
-  high are in different units no longer shows and compares both in the low's unit, which could
-  mark a normal result as high; its numbers are left out and any text is kept. A range unit that
+  No need to delete your database or re-ingest.
+- **Reference ranges and blood-pressure-style panels display more safely.** A range unit that
   isn't text is ignored rather than shown as `[object Object]`, which also silently stopped the
-  result from being flagged. A panel part with nothing but an empty label is dropped instead of
-  shown as a blank part.
+  result from being flagged. A panel part with no label and no value is dropped instead of shown
+  as a blank part.
 
 ## [0.1.0] - 2026-09-25
 

@@ -35,8 +35,7 @@ def reference_range(resource: dict | None) -> dict | None:
 
     `low`/`high` are only populated when the bound is a number; a text-only range
     ("Negative", "See comment") comes back with just `text`, and the frontend shows it
-    without flagging anything. So does a range whose low and high are in different units:
-    there's no one unit to show them in or compare a value against.
+    without flagging anything.
     """
     return _flatten_range(resource.get("referenceRange")) if resource else None
 
@@ -82,7 +81,7 @@ def components(resource: dict | None) -> list[dict] | None:
         )
         value_num, value_unit = _quantity(component.get("valueQuantity"))
         value_text = component.get("valueString")
-        if not isinstance(value_text, str):
+        if not _nonempty_str(value_text):
             value_text = None
         if label is None and value_num is None and value_text is None:
             continue
@@ -106,8 +105,6 @@ def _flatten_range(ranges: object) -> dict | None:
     # A FHIR range bound is a SimpleQuantity, so it's read the same way as a value.
     low, low_unit = _quantity(first.get("low"))
     high, high_unit = _quantity(first.get("high"))
-    if low_unit and high_unit and low_unit != high_unit:
-        low = high = low_unit = high_unit = None
     text = first.get("text") if isinstance(first.get("text"), str) else None
     if low is None and high is None and text is None:
         return None

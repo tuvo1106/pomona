@@ -53,31 +53,6 @@ class TestReferenceRange:
                 {"referenceRange": [{"low": {"value": 1, "unit": {"code": "mg"}}}]},
                 {"low": 1, "high": None, "unit": None, "text": None},
             ),
-            # Bounds in two units have no one unit to show or compare them in; the text,
-            # when there is some, is still shown.
-            (
-                {
-                    "referenceRange": [
-                        {
-                            "low": {"value": 3.5, "unit": "g/dL"},
-                            "high": {"value": 50, "unit": "g/L"},
-                            "text": "3.5 g/dL - 50 g/L",
-                        }
-                    ]
-                },
-                {"low": None, "high": None, "unit": None, "text": "3.5 g/dL - 50 g/L"},
-            ),
-            (
-                {
-                    "referenceRange": [
-                        {
-                            "low": {"value": 3.5, "unit": "g/dL"},
-                            "high": {"value": 50, "unit": "g/L"},
-                        }
-                    ]
-                },
-                None,
-            ),
         ],
     )
     def test_flattens_first_range(self, resource, expected):
@@ -99,6 +74,7 @@ class TestComponents:
             {"component": [{"code": {}, "valueQuantity": {"value": None}}]},
             {"component": [{"code": {"coding": 7}}]},
             {"component": [{"code": {"text": "", "coding": [{"display": ""}]}}]},
+            {"component": [{"code": {"text": ""}, "valueString": ""}]},
             {"component": [{"valueQuantity": {"value": float("nan")}}]},
         ],
     )

@@ -536,6 +536,23 @@ class TestClinical:
             }
         ]
 
+    def test_non_finite_numbers_in_stored_results_read_as_null(self, client, seeded_db_path):
+        # What a database ingested before the loader dropped them can hold: json.dumps writes
+        # inf and NaN as these bare words, and the response can't encode them.
+        conn = db_module.connect(seeded_db_path, isolation_level=None)
+        conn.execute(
+            "UPDATE clinical_records SET results_json = ? WHERE resource_type = 'DiagnosticReport'",
+            ['[{"value_num": Infinity}, {"value_num": NaN}, {"value_num": 95}]'],
+        )
+        checkpoint_and_close(conn)
+        response = client.get("/api/clinical?resource_type=DiagnosticReport")
+        assert response.status_code == 200
+        assert response.json()[0]["results"] == [
+            {"value_num": None},
+            {"value_num": None},
+            {"value_num": 95},
+        ]
+
 
 # Invented readings, not anyone's: a textbook 120/80 so the assertions read unambiguously.
 SYSTOLIC_COMPONENT = {

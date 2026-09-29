@@ -601,7 +601,11 @@ def clinical(
     for row in rows:
         record = dict(row)
         results_json = record.pop("results_json")
-        record["results"] = json.loads(results_json) if results_json else None
+        # A database ingested before the loader dropped non-finite numbers can hold Infinity
+        # or NaN in here, which the response can't encode; read them as missing instead.
+        record["results"] = (
+            json.loads(results_json, parse_constant=lambda _: None) if results_json else None
+        )
         # Parsed once here, not once per helper: both read the same stored resource.
         resource = fhir.parse_resource(record.pop("raw_json"))
         record["reference_range"] = fhir.reference_range(resource)
