@@ -20,10 +20,11 @@ export function useDataMeta() {
   return useQuery({
     queryKey: queryKeys.meta(),
     queryFn: api.meta,
-    // Every page's data queries wait on this one (see `ready` in useAnchoredRange).
-    // react-query's default of 3 retries with backoff would hold them on skeletons for ~7s
-    // when it fails -- e.g. the 503 for a missing database -- instead of letting each page
-    // show its error.
+    // Every page's data queries wait on this one (see `ready` in useAnchoredRange), so it
+    // doesn't retry at all. The app-wide policy (lib/queryClient.ts) already gives up at once
+    // on the no-database 503 and on a 4xx, but retries a network error or other 5xx twice
+    // with backoff -- which here would hold every page on skeletons for those seconds
+    // instead of letting each one show its error.
     retry: false,
     // Default staleTime (0) plus refetch-on-focus, like the data queries: after a re-ingest
     // and server restart, an already-open tab picks up the new anchor when it's refocused

@@ -7,7 +7,7 @@ import { parseLocalDate, type Bucket } from '@/lib/timeRange'
  *
  * Every helper parses through `parseLocalDate`, which splits the string. Handing a bare
  * `YYYY-MM-DD` to `new Date()` instead parses it as UTC midnight, which lands on the previous
- * day in any zone west of UTC -- the same trap ClinicalPage's own formatter documents. (That
+ * day in any zone west of UTC -- the same trap formatClinicalDate (lib/clinicalText.ts) documents. (That
  * one stays separate: clinical dates are epoch values deliberately rendered in UTC.)
  */
 

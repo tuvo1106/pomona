@@ -10,8 +10,10 @@ export const queryKeys = {
   meta: () => ['meta'] as const,
   overview: (range: DateRange) => ['overview', range] as const,
   activitySummary: (range: DateRange) => ['activity-summary', range] as const,
-  /** No range is every metric type with data at all, for the all-metrics list. */
-  metricTypes: (range?: DateRange) => ['metric-types', range ?? 'all-time'] as const,
+  /** No range -- omitted, or the dashboard's "All time" `{}` -- is every metric type with
+   * data at all. Both are the same request, so they share one cache entry. */
+  metricTypes: (range?: DateRange) =>
+    ['metric-types', range?.start || range?.end ? range : 'all-time'] as const,
   metricTimeseries: (metricType: string, params: DateRange & { bucket?: Bucket }) =>
     ['metric-timeseries', metricType, params] as const,
   categoryMetricTimeseries: (

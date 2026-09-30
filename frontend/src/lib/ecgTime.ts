@@ -1,6 +1,6 @@
 /** Time-of-day for an ECG recording. Separate from lib/formatDate.ts, which formats the
  * `YYYY-MM-DD` local calendar dates the dashboard APIs return; this one starts from an
- * epoch, as ClinicalPage's own formatter does -- though not in that one's zone. Clinical
+ * epoch, as lib/clinicalText.ts's formatClinicalDate does -- though not in that one's zone. Clinical
  * dates are pinned to UTC because a FHIR date-only value is stored as UTC midnight and any
  * zone behind UTC would shift it a day; an ECG carries a real instant, and the question
  * here is which clock to show it on. See below.

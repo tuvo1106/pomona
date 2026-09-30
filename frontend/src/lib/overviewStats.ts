@@ -79,7 +79,7 @@ export const METRICS: MetricSpec[] = [
     better: 'neutral',
     pick: (s) => s.avg_weight?.value ?? null,
     format: (v, s) => ({ value: fixed(v, 1), unit: withUnit(s.avg_weight?.unit) }),
-    formatDelta: (d, s) => `${signed(d, 1)} ${s.avg_weight?.unit ?? ''}`.trim(),
+    formatDelta: (d, s) => `${signed(d, 1)} ${withUnit(s.avg_weight?.unit) ?? ''}`.trim(),
     roundDelta: roundTo(1),
     unit: (s) => s.avg_weight?.unit,
   },
@@ -96,7 +96,7 @@ export const METRICS: MetricSpec[] = [
     better: 'up',
     pick: (s) => s.avg_hrv?.value ?? null,
     format: (v, s) => ({ value: fixed(v, 0), unit: withUnit(s.avg_hrv?.unit) }),
-    formatDelta: (d, s) => `${signed(d, 0)} ${s.avg_hrv?.unit ?? ''}`.trim(),
+    formatDelta: (d, s) => `${signed(d, 0)} ${withUnit(s.avg_hrv?.unit) ?? ''}`.trim(),
     roundDelta: roundTo(0),
     unit: (s) => s.avg_hrv?.unit,
   },
@@ -206,12 +206,10 @@ export function metricCard(metric: MetricSpec, data: OverviewData): StatCardCont
     current == null
       ? undefined
       : noteForMissing(data, prior != null, 'Unit changed since last period')
+  const priorFormatted = previous && prior != null ? metric.format(prior, previous) : null
   const title =
-    previousSpan && previous && prior != null
-      ? `Previous period (${previousSpan}): ${[
-          metric.format(prior, previous).value,
-          metric.format(prior, previous).unit,
-        ]
+    previousSpan && priorFormatted
+      ? `Previous period (${previousSpan}): ${[priorFormatted.value, priorFormatted.unit]
           .filter(Boolean)
           .join(' ')}`
       : undefined
