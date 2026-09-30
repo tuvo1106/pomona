@@ -73,14 +73,23 @@ def _codings(code: Any) -> list[dict[str, Any]]:
     return [c for c in coding if isinstance(c, dict)] if isinstance(coding, list) else []
 
 
-def code_label(code: Any) -> str | None:
+def code_label(code: Any, codings: list[dict[str, Any]] | None = None) -> str | None:
     """A CodeableConcept's human-readable name: its `text`, else the first coding that has
-    a `display`. Empty strings are skipped, since they name nothing.
+    a `display`. Empty strings are skipped, since they name nothing. Every coding in one
+    CodeableConcept codes the same concept, so a later coding's display names it as well as
+    the first's would. `codings` is `_codings(code)`, for a caller that already has it.
     """
+    if codings is None:
+        codings = _codings(code)
     return as_nonempty_str(as_dict(code).get("text")) or next(
-        (display for c in _codings(code) if (display := as_nonempty_str(c.get("display")))),
+        (display for c in codings if (display := as_nonempty_str(c.get("display")))),
         None,
     )
+
+
+def first_code(code: Any) -> str | None:
+    """The code of a CodeableConcept's first coding that has one."""
+    return next((value for c in _codings(code) if (value := as_nonempty_str(c.get("code")))), None)
 
 
 def parse_resource(raw_json: str | None) -> dict | None:
@@ -128,11 +137,12 @@ def components(resource: dict | None) -> list[dict] | None:
         if not isinstance(component, dict):
             continue
         code = component.get("code")
-        label = code_label(code)
+        codings = _codings(code)
+        label = code_label(code, codings)
         loinc = next(
             (
                 c["code"]
-                for c in _codings(code)
+                for c in codings
                 if c.get("system") in LOINC_SYSTEMS and isinstance(c.get("code"), str)
             ),
             None,
@@ -155,13 +165,11 @@ def components(resource: dict | None) -> list[dict] | None:
 
 
 def _flatten_range(ranges: object) -> dict | None:
-    if not isinstance(ranges, list) or not ranges or not isinstance(ranges[0], dict):
-        return None
-    first = ranges[0]
+    first = first_dict(ranges)
     # A FHIR range bound is a SimpleQuantity, so it's read the same way as a value.
     low, low_unit = _quantity(first.get("low"))
     high, high_unit = _quantity(first.get("high"))
-    text = first.get("text") if isinstance(first.get("text"), str) else None
+    text = as_str(first.get("text"))
     if low is None and high is None and text is None:
         return None
     return {"low": low, "high": high, "unit": low_unit or high_unit, "text": text}

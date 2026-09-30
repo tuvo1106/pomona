@@ -20,7 +20,15 @@ from typing import Any
 
 from pomona.clinical import INGESTED_RESOURCE_TYPES
 from pomona.db import insert_sql
-from pomona.fhir import as_dict, as_number, as_str, code_label, first_dict
+from pomona.fhir import (
+    as_dict,
+    as_nonempty_str,
+    as_number,
+    as_str,
+    code_label,
+    first_code,
+    first_dict,
+)
 from pomona.ingest.dates import parse_fhir_datetime
 
 logger = logging.getLogger(__name__)
@@ -45,11 +53,8 @@ def _code_fields(code: Any) -> tuple[str | None, str | None, str | None]:
 
 
 def _status_code(codeable_concept: Any) -> str | None:
-    codeable_concept = as_dict(codeable_concept)
-    first = first_dict(codeable_concept.get("coding"))
-    if first:
-        return as_str(first.get("code"))
-    return as_str(codeable_concept.get("text"))
+    """A status CodeableConcept's code: the first coding that has one, else its text."""
+    return first_code(codeable_concept) or as_nonempty_str(as_dict(codeable_concept).get("text"))
 
 
 def _extract_observation(r: dict[str, Any]) -> dict[str, Any]:
@@ -64,7 +69,7 @@ def _extract_observation(r: dict[str, Any]) -> dict[str, Any]:
         "status": as_str(r.get("status")),
         "value_num": as_number(vq.get("value")),
         "value_unit": as_str(vq.get("unit")),
-        "value_text": as_str(r.get("valueString")),
+        "value_text": as_nonempty_str(r.get("valueString")),
         "effective_date": _date(r.get("effectiveDateTime") or r.get("issued")),
         "recorded_date": _date(r.get("issued")),
         "category": as_str(first_dict(r.get("category")).get("text")),
@@ -251,7 +256,7 @@ def load_clinical_records(conn: sqlite3.Connection, clinical_dir: Path) -> tuple
     one transaction, so one bad file must not discard everything else already loaded. Such a
     file's resource type is unknowable, so it's counted even if it would have been dropped by
     the allowlist anyway. A readable resource with wrong-typed fields isn't skipped at all:
-    those fields flatten to None (see _obj/_str/_num above) and the rest of it still loads.
+    those fields flatten to None (see the pomona.fhir accessors) and the rest of it still loads.
     """
     if not clinical_dir.exists():
         return 0, 0

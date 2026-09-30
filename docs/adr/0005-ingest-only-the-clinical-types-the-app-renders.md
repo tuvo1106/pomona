@@ -88,6 +88,6 @@ a traceback rather than a message; that is the intended trade for an invariant w
 true at startup or not at all, but it is the reason this list says four and not three.
 
 Three tests hold this in place (`tests/ingest/test_clinical_loader.py`,
-`tests/api/test_dashboard_routes.py`, `tests/test_demo_export.py`), and the `Procedure`
+`tests/api/test_clinical_records.py`, `tests/test_demo_export.py`), and the `Procedure`
 fixture stays in `tests/fixtures/clinical-records/` on purpose: without a resource to look
 for, the check could be removed with every test still passing.

@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from pomona.api.dependencies import DbDep
-from pomona.db import latest_data_date
+from pomona.api.query import data_span
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
@@ -20,7 +20,8 @@ def meta(conn: DbDep) -> dict:
     the last Record outside every relative range. Every dated page waits on this endpoint at
     load and on each window refocus, so it's read from `ingest_meta`, where ingest stores it,
     rather than recomputed per request -- the `records` part is a full index scan on a real
-    export. A database ingested before that key existed falls back to computing it live.
+    export. A database ingested before that key existed falls back to `query.data_span`, which
+    computes it live once per ingest.
 
     `ingested_at` is when `pomona ingest` last ran, as a unix epoch. Either is null
     on an empty or partially built database.
@@ -35,7 +36,7 @@ def meta(conn: DbDep) -> dict:
         # Stored as "" when the ingest had no dated data at all.
         latest_date = stored["latest_date"] or None
     else:
-        latest_date = latest_data_date(conn)
+        latest_date = data_span(conn)[1]
     return {
         "latest_date": latest_date,
         "ingested_at": int(stored["ingested_at"]) if "ingested_at" in stored else None,

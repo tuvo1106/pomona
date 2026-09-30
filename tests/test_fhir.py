@@ -35,6 +35,18 @@ class TestAccessors:
     def test_code_label(self, code, expected):
         assert fhir.code_label(code) == expected
 
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            ({"coding": [{"code": "a"}, {"code": "b"}]}, "a"),
+            ({"coding": [{"display": "x"}, {"code": ""}, {"code": "c"}]}, "c"),
+            ({"text": "only text"}, None),
+            (None, None),
+        ],
+    )
+    def test_first_code(self, code, expected):
+        assert fhir.first_code(code) == expected
+
     def test_shape_helpers(self):
         assert fhir.as_dict([1]) == {}
         assert fhir.first_dict([{"a": 1}, {"b": 2}]) == {"a": 1}

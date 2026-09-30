@@ -358,6 +358,35 @@ class TestLoadClinicalRecords:
         assert named["code_value"] == "1"
         assert _row(writable_conn, "nameless")["code_text"] is None
 
+    def test_status_is_the_first_coding_with_a_code_else_the_text(self, writable_conn, tmp_path):
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        for resource_id, status in [
+            ("later-code", {"coding": [{"display": "Active"}, {"code": "active"}]}),
+            ("text-only", {"coding": [{"system": "http://example.org"}], "text": "resolved"}),
+            ("nothing", {"coding": [{"code": ""}], "text": ""}),
+        ]:
+            (clinical_dir / f"Condition-{resource_id}.json").write_text(
+                json.dumps(
+                    {"resourceType": "Condition", "id": resource_id, "clinicalStatus": status}
+                )
+            )
+        load_clinical_records(writable_conn, clinical_dir)
+        assert _row(writable_conn, "later-code")["status"] == "active"
+        assert _row(writable_conn, "text-only")["status"] == "resolved"
+        assert _row(writable_conn, "nothing")["status"] is None
+
+    def test_an_empty_value_string_is_no_value(self, writable_conn, tmp_path):
+        # As the page reads a panel part's: an empty string would show as a blank value rather
+        # than as missing.
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        (clinical_dir / "Observation-1.json").write_text(
+            json.dumps({"resourceType": "Observation", "id": "blank", "valueString": ""})
+        )
+        load_clinical_records(writable_conn, clinical_dir)
+        assert _row(writable_conn, "blank")["value_text"] is None
+
     def test_numbers_no_float_can_hold_load_as_none(self, writable_conn, tmp_path):
         # Written as raw text: both are valid JSON that json.dumps can't produce. 1e999
         # parses to inf, which would ride along in results_json and 500 the clinical API;
