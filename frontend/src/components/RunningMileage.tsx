@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { DataCard } from '@/components/DataCard'
+import { useBucketDates } from '@/hooks/useBucketedChart'
 import { useRunningMileage } from '@/hooks/useWorkouts'
 import {
   CHART_ANIMATION_DURATION,
@@ -12,7 +12,6 @@ import {
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
 import { formatDistance } from '@/lib/distance'
-import { makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { partialBarShape } from '@/lib/partialBuckets'
 import type { DateRange } from '@/lib/timeRange'
 
@@ -31,10 +30,7 @@ export function RunningMileage({ range }: { range: DateRange }) {
   const { data, isLoading, error } = useRunningMileage(range)
   const unit = data?.unit ?? ''
   const total = data?.total_distance
-  const tickFormatter = useMemo(
-    () => makeDateTickFormatter(data?.points.map((p) => p.date) ?? [], 'month'),
-    [data],
-  )
+  const { tickFormatter, labelFormatter } = useBucketDates(data?.points, 'month')
 
   return (
     <DataCard
@@ -74,7 +70,7 @@ export function RunningMileage({ range }: { range: DateRange }) {
                 <Tooltip
                   cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
                   content={ChartTooltip}
-                  labelFormatter={makeDateLabelFormatter('month')}
+                  labelFormatter={labelFormatter}
                 />
                 <Bar
                   dataKey="distance"

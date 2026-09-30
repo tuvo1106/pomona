@@ -14,7 +14,7 @@ import { barEndLabel } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
-import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
+import { DATE_COLUMN, timeseriesCells, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { axisScale } from '@/lib/axisScale'
 import {
@@ -27,7 +27,7 @@ import {
 } from '@/lib/chartStyle'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
-import { labelIndex, partialBarShape, timeseriesCells } from '@/lib/partialBuckets'
+import { labelIndex, partialBarShape } from '@/lib/partialBuckets'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
 

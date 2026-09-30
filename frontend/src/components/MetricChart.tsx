@@ -14,7 +14,7 @@ import { makeLineEndDot, makePartialDot } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
-import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
+import { DATE_COLUMN, timeseriesCells, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { useMetricTimeseries } from '@/hooks/useMetricTimeseries'
 import { axisScale } from '@/lib/axisScale'
@@ -27,13 +27,10 @@ import {
 } from '@/lib/chartStyle'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { friendlyName } from '@/lib/metricNames'
-import { labelIndex, splitPartial, timeseriesCells } from '@/lib/partialBuckets'
+import { labelIndex, splitPartial } from '@/lib/partialBuckets'
 import { seriesStats, statEntries } from '@/lib/seriesStats'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 import { displayUnit, valueColumnHeader } from '@/lib/units'
-
-// Stable fallback so the memos below don't recompute on every render while loading.
-const NO_POINTS: TimeseriesPoint[] = []
 
 /** Apple's export stores percentage types (SpO2, double support, walking asymmetry,
  * steadiness, ...) as 0-1 fractions while labelling the unit "%", so 97% arrives as 0.97.
@@ -41,9 +38,10 @@ const NO_POINTS: TimeseriesPoint[] = []
  * series is <= 1, so a source that already writes 0-100 under "%" isn't blown up x100.
  */
 function toDisplayPoints(
-  points: TimeseriesPoint[],
+  points: TimeseriesPoint[] | undefined,
   unit: string | null | undefined,
-): TimeseriesPoint[] {
+): TimeseriesPoint[] | undefined {
+  if (!points) return points
   const isFraction = unit === '%' && points.every((p) => p.value == null || p.value <= 1)
   if (!isFraction) return points
   return points.map((p) => ({ ...p, value: p.value == null ? null : p.value * 100 }))
@@ -74,7 +72,7 @@ export function MetricChart({
   const label = title ?? friendlyName(metricType)
 
   const displayPoints = useMemo(
-    () => toDisplayPoints(data?.points ?? NO_POINTS, data?.unit),
+    () => toDisplayPoints(data?.points, data?.unit),
     [data?.points, data?.unit],
   )
   const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
