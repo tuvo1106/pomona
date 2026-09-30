@@ -3,6 +3,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from pomona.db import insert_sql
 from pomona.ingest.dates import parse_apple_date
 from pomona.ingest.xml_parser import count_elements, iter_health_elements
 
@@ -51,18 +52,12 @@ ACTIVITY_SUMMARY_COLUMNS = [
 ]
 
 
-def _insert_sql(table: str, columns: list[str], *, or_replace: bool = False) -> str:
-    placeholders = ",".join("?" * len(columns))
-    verb = "INSERT OR REPLACE INTO" if or_replace else "INSERT INTO"
-    return f"{verb} {table} ({','.join(columns)}) VALUES ({placeholders})"
-
-
-RECORD_SQL = _insert_sql("records", RECORD_COLUMNS)
-WORKOUT_SQL = _insert_sql("workouts", WORKOUT_COLUMNS)
+RECORD_SQL = insert_sql("records", RECORD_COLUMNS)
+WORKOUT_SQL = insert_sql("workouts", WORKOUT_COLUMNS)
 # activity_summaries.date is the primary key, and exports restored from a backup or merged
 # across devices can repeat a day. OR REPLACE keeps the last entry for the day instead of
 # aborting the transaction (and with it the entire ingest) on a duplicate.
-ACTIVITY_SUMMARY_SQL = _insert_sql("activity_summaries", ACTIVITY_SUMMARY_COLUMNS, or_replace=True)
+ACTIVITY_SUMMARY_SQL = insert_sql("activity_summaries", ACTIVITY_SUMMARY_COLUMNS, or_replace=True)
 
 
 def _parse_value(raw: str | None) -> tuple[str | None, float | None]:

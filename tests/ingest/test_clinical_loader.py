@@ -327,6 +327,37 @@ class TestLoadClinicalRecords:
         results = json.loads(_row(writable_conn, "dr-odd")["results_json"])
         assert [r["display"] for r in results] == [None, "HDL"]
 
+    def test_code_text_is_the_first_coding_with_a_name(self, writable_conn, tmp_path):
+        # The same rule the page's components use (fhir.code_label): a first coding with no
+        # display, or an empty one, doesn't leave the record nameless when a later one has it.
+        # The system and code still come from the first coding.
+        clinical_dir = tmp_path / "clinical-records"
+        clinical_dir.mkdir()
+        (clinical_dir / "Condition-1.json").write_text(
+            json.dumps(
+                {
+                    "resourceType": "Condition",
+                    "id": "named-later",
+                    "code": {
+                        "text": "",
+                        "coding": [
+                            {"system": "http://snomed.info/sct", "code": "1", "display": ""},
+                            {"system": "http://hl7.org/fhir/sid/icd-10", "display": "Named"},
+                        ],
+                    },
+                }
+            )
+        )
+        (clinical_dir / "Condition-2.json").write_text(
+            json.dumps({"resourceType": "Condition", "id": "nameless", "code": {"text": ""}})
+        )
+        load_clinical_records(writable_conn, clinical_dir)
+        named = _row(writable_conn, "named-later")
+        assert named["code_text"] == "Named"
+        assert named["code_system"] == "http://snomed.info/sct"
+        assert named["code_value"] == "1"
+        assert _row(writable_conn, "nameless")["code_text"] is None
+
     def test_numbers_no_float_can_hold_load_as_none(self, writable_conn, tmp_path):
         # Written as raw text: both are valid JSON that json.dumps can't produce. 1e999
         # parses to inf, which would ride along in results_json and 500 the clinical API;

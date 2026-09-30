@@ -20,6 +20,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **An invalid `bucket` or `mode` API parameter is now a 422, not a 400,** the same status the API
   already gave every other invalid parameter. Only matters if you call the API directly.
+- **A clinical record's name comes from the first coding that has one.** When a record has no
+  text name, ingest used to take only the first coding's display, so a record whose first coding
+  had none showed as "—" even when a later coding named it. It now uses the same rule as the
+  parts of a blood-pressure panel. Re-run `pomona ingest` to pick it up; no need to delete your
+  database.
 
 ### Removed
 

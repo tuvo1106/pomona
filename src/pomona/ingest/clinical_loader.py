@@ -14,95 +14,60 @@ flattened into results_json -- see _resolve_diagnostic_report_results.
 
 import json
 import logging
-import math
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from pomona.clinical import INGESTED_RESOURCE_TYPES
+from pomona.db import insert_sql
+from pomona.fhir import as_dict, as_number, as_str, code_label, first_dict
 from pomona.ingest.dates import parse_fhir_datetime
 
 logger = logging.getLogger(__name__)
 
-# Shape-tolerant accessors. A FHIR export can hold a field of the wrong JSON type -- a string
-# where a CodeableConcept belongs, an object where a status string belongs -- and the
-# extractors read every field through these, so a wrong-typed field flattens to None (the
-# resource's raw_json still has it) instead of raising or reaching SQLite as an unbindable
-# value. That keeps the extractors free of try/except: anything they *do* raise is a bug in
-# this module, and it fails the ingest loudly rather than being counted as a skipped file.
-
-_SQLITE_INT_MIN, _SQLITE_INT_MAX = -(2**63), 2**63 - 1
-
-
-def _obj(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _first(value: Any) -> dict[str, Any]:
-    """The first element of a JSON array, if it's an object; {} otherwise."""
-    return _obj(value[0]) if isinstance(value, list) and value else {}
-
-
-def _str(value: Any) -> str | None:
-    return value if isinstance(value, str) else None
-
-
-def _num(value: Any) -> int | float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    if isinstance(value, int) and not _SQLITE_INT_MIN <= value <= _SQLITE_INT_MAX:
-        try:
-            value = float(value)
-        except OverflowError:
-            # Too big even for a float: raising here would abort the whole ingest.
-            return None
-    # A value like 1e999 parses to inf. Stored in results_json it comes back as inf, which
-    # the API can't encode, so one DiagnosticReport would 500 the whole clinical page.
-    return value if math.isfinite(value) else None
+# Every field is read through the shape-tolerant accessors in pomona.fhir, shared with the API.
+# A FHIR export can hold a field of the wrong JSON type -- a string where a CodeableConcept
+# belongs, an object where a status string belongs -- and this way a wrong-typed field flattens
+# to None (the resource's raw_json still has it) instead of raising or reaching SQLite as an
+# unbindable value. That keeps the extractors free of try/except: anything they *do* raise is a
+# bug in this module, and it fails the ingest loudly rather than being counted as a skipped file.
 
 
 def _date(value: Any) -> int | None:
-    return parse_fhir_datetime(_str(value))
+    return parse_fhir_datetime(as_str(value))
 
 
 def _code_fields(code: Any) -> tuple[str | None, str | None, str | None]:
-    """Extracts (text, system, value) from a FHIR CodeableConcept."""
-    code = _obj(code)
-    text = _str(code.get("text"))
-    first = _first(code.get("coding"))
-    if first:
-        return (
-            text or _str(first.get("display")),
-            _str(first.get("system")),
-            _str(first.get("code")),
-        )
-    return text, None, None
+    """(label, system, code) from a FHIR CodeableConcept: its name as the page shows it (see
+    fhir.code_label), and the system and code of its first coding."""
+    first = first_dict(as_dict(code).get("coding"))
+    return code_label(code), as_str(first.get("system")), as_str(first.get("code"))
 
 
 def _status_code(codeable_concept: Any) -> str | None:
-    codeable_concept = _obj(codeable_concept)
-    first = _first(codeable_concept.get("coding"))
+    codeable_concept = as_dict(codeable_concept)
+    first = first_dict(codeable_concept.get("coding"))
     if first:
-        return _str(first.get("code"))
-    return _str(codeable_concept.get("text"))
+        return as_str(first.get("code"))
+    return as_str(codeable_concept.get("text"))
 
 
 def _extract_observation(r: dict[str, Any]) -> dict[str, Any]:
     code_text, code_system, code_value = _code_fields(r.get("code"))
-    vq = _obj(r.get("valueQuantity"))
+    vq = as_dict(r.get("valueQuantity"))
     # A narrative/impression Observation (e.g. a radiology report's freeform findings, seen
     # via DiagnosticReport.result[] resolution) carries valueString instead of valueQuantity.
     return {
         "code_text": code_text,
         "code_system": code_system,
         "code_value": code_value,
-        "status": _str(r.get("status")),
-        "value_num": _num(vq.get("value")),
-        "value_unit": _str(vq.get("unit")),
-        "value_text": _str(r.get("valueString")),
+        "status": as_str(r.get("status")),
+        "value_num": as_number(vq.get("value")),
+        "value_unit": as_str(vq.get("unit")),
+        "value_text": as_str(r.get("valueString")),
         "effective_date": _date(r.get("effectiveDateTime") or r.get("issued")),
         "recorded_date": _date(r.get("issued")),
-        "category": _str(_first(r.get("category")).get("text")),
+        "category": as_str(first_dict(r.get("category")).get("text")),
     }
 
 
@@ -128,7 +93,7 @@ def _extract_immunization(r: dict[str, Any]) -> dict[str, Any]:
         "code_text": vaccine_text,
         "code_system": vaccine_system,
         "code_value": vaccine_code,
-        "status": _str(r.get("status")),
+        "status": as_str(r.get("status")),
         "value_num": None,
         "value_unit": None,
         "value_text": vaccine_text,
@@ -151,12 +116,12 @@ def _resolve_diagnostic_report_results(
         return None
     resolved = []
     for entry in results:
-        entry = _obj(entry)
-        resource_type, _, resource_id = (_str(entry.get("reference")) or "").partition("/")
+        entry = as_dict(entry)
+        resource_type, _, resource_id = (as_str(entry.get("reference")) or "").partition("/")
         observation = lookup.get((resource_type, resource_id), _EMPTY_FIELDS)
         resolved.append(
             {
-                "display": _str(entry.get("display")),
+                "display": as_str(entry.get("display")),
                 "code_text": observation["code_text"],
                 "value_num": observation["value_num"],
                 "value_unit": observation["value_unit"],
@@ -173,7 +138,7 @@ def _extract_diagnostic_report(r: dict[str, Any]) -> dict[str, Any]:
         "code_text": code_text,
         "code_system": code_system,
         "code_value": code_value,
-        "status": _str(r.get("status")),
+        "status": as_str(r.get("status")),
         "value_num": None,
         "value_unit": None,
         "value_text": None,
@@ -189,7 +154,7 @@ def _extract_document_reference(r: dict[str, Any]) -> dict[str, Any]:
         "code_text": type_text,
         "code_system": type_system,
         "code_value": type_code,
-        "status": _str(r.get("status")) or _str(r.get("docStatus")),
+        "status": as_str(r.get("status")) or as_str(r.get("docStatus")),
         "value_num": None,
         "value_unit": None,
         "value_text": None,
@@ -249,9 +214,7 @@ COLUMNS = [
     "results_json",
     "raw_json",
 ]
-INSERT_SQL = (
-    f"INSERT INTO clinical_records ({','.join(COLUMNS)}) VALUES ({','.join('?' * len(COLUMNS))})"
-)
+INSERT_SQL = insert_sql("clinical_records", COLUMNS)
 
 
 def _read_resource(path: Path) -> dict[str, Any] | str:
@@ -306,10 +269,10 @@ def load_clinical_records(conn: sqlite3.Connection, clinical_dir: Path) -> tuple
             logger.warning("Skipping clinical record %s: it %s", path.name, resource)
             skipped += 1
             continue
-        resource_type = _str(resource.get("resourceType"))
+        resource_type = as_str(resource.get("resourceType"))
         if resource_type not in INGESTED_RESOURCE_TYPES:
             continue
-        resource_id = _str(resource.get("id")) or path.stem
+        resource_id = as_str(resource.get("id")) or path.stem
         fields = EXTRACTORS[resource_type](resource)
         resources.append((resource_id, resource_type, resource, fields))
         fields_by_ref[(resource_type, resource_id)] = fields

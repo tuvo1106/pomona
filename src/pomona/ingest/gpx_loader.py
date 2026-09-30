@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from pomona.db import insert_sql
 from pomona.ingest.dates import parse_fhir_datetime
 
 NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
@@ -30,9 +31,7 @@ COLUMNS = [
     "points_json",
     "source_file",
 ]
-INSERT_SQL = (
-    f"INSERT INTO workout_routes ({','.join(COLUMNS)}) VALUES ({','.join('?' * len(COLUMNS))})"
-)
+INSERT_SQL = insert_sql("workout_routes", COLUMNS)
 
 # Closest-start-wins: picks the workout whose start_date is nearest the route's own start,
 # among workouts whose time window overlaps the route's at all.

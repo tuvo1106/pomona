@@ -2,10 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from pomona import db as db_module
 from pomona.api import query
 from pomona.clinical import INGESTED_RESOURCE_TYPES
-from tests.conftest import checkpoint_and_close
+from tests.conftest import writing
 
 
 class TestMetricTypes:
@@ -85,19 +84,18 @@ class TestMetricTimeseries:
         # A metric's unit can change over time (weight logged in lb, then kg). The label
         # must describe the window actually plotted, not whichever row SQLite happened to
         # reach first across all of history.
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.executemany(
-            "INSERT INTO records "
-            "(type, value_text, value_num, unit, start_date, end_date, start_local_date) "
-            "VALUES ('HKQuantityTypeIdentifierBodyMass', ?, ?, ?, 0, 0, ?)",
-            [
-                ("180", 180.0, "lb", "2020-01-01"),
-                ("179", 179.0, "lb", "2020-01-02"),
-                ("178", 178.0, "lb", "2020-01-03"),
-                ("80", 80.0, "kg", "2026-08-01"),
-            ],
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.executemany(
+                "INSERT INTO records "
+                "(type, value_text, value_num, unit, start_date, end_date, start_local_date) "
+                "VALUES ('HKQuantityTypeIdentifierBodyMass', ?, ?, ?, 0, 0, ?)",
+                [
+                    ("180", 180.0, "lb", "2020-01-01"),
+                    ("179", 179.0, "lb", "2020-01-02"),
+                    ("178", 178.0, "lb", "2020-01-03"),
+                    ("80", 80.0, "kg", "2026-08-01"),
+                ],
+            )
 
         base = "/api/metrics/HKQuantityTypeIdentifierBodyMass/timeseries"
         assert client.get(f"{base}?start=2026-01-01&end=2026-12-31").json()["unit"] == "kg"
@@ -149,14 +147,12 @@ class TestWorkoutsSummary:
 
 def _add_runs(db_path, runs):
     """Inserts (distance, unit, start_local_date) running workouts into a seeded database."""
-    conn = db_module.connect(db_path)
-    conn.executemany(
-        "INSERT INTO workouts (activity_type, total_distance, total_distance_unit, "
-        "start_date, end_date, start_local_date) VALUES (?, ?, ?, 0, 0, ?)",
-        [("HKWorkoutActivityTypeRunning", *run) for run in runs],
-    )
-    conn.commit()
-    checkpoint_and_close(conn)
+    with writing(db_path) as conn:
+        conn.executemany(
+            "INSERT INTO workouts (activity_type, total_distance, total_distance_unit, "
+            "start_date, end_date, start_local_date) VALUES (?, ?, ?, 0, 0, ?)",
+            [("HKWorkoutActivityTypeRunning", *run) for run in runs],
+        )
 
 
 class TestRunningMileage:
@@ -480,12 +476,11 @@ class TestClinical:
         # A database built before a type left the ingest allowlist still holds those rows until
         # the next drop-and-reload. Written straight into the table for that reason: the loader
         # can no longer produce one, which is exactly why the endpoint has to defend itself.
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute(
-            "INSERT INTO clinical_records (resource_id, resource_type, code_text, raw_json)"
-            " VALUES ('stale-row', 'SomeUnservedType', 'whatever', '{}')"
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute(
+                "INSERT INTO clinical_records (resource_id, resource_type, code_text, raw_json)"
+                " VALUES ('stale-row', 'SomeUnservedType', 'whatever', '{}')"
+            )
 
         served = {row["resource_type"] for row in client.get("/api/clinical").json()}
         # Non-empty first: `served <= allowlist` is satisfied by the empty set, so on its own it
@@ -539,12 +534,12 @@ class TestClinical:
     def test_non_finite_numbers_in_stored_results_read_as_null(self, client, seeded_db_path):
         # What a database ingested before the loader dropped them can hold: json.dumps writes
         # inf and NaN as these bare words, and the response can't encode them.
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute(
-            "UPDATE clinical_records SET results_json = ? WHERE resource_type = 'DiagnosticReport'",
-            ['[{"value_num": Infinity}, {"value_num": NaN}, {"value_num": 95}]'],
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute(
+                "UPDATE clinical_records SET results_json = ? "
+                "WHERE resource_type = 'DiagnosticReport'",
+                ['[{"value_num": Infinity}, {"value_num": NaN}, {"value_num": 95}]'],
+            )
         response = client.get("/api/clinical?resource_type=DiagnosticReport")
         assert response.status_code == 200
         assert response.json()[0]["results"] == [
@@ -827,17 +822,16 @@ class TestOverview:
         def epoch(day: int, hour: int) -> int:
             return int(datetime(2026, 7, day, hour, tzinfo=pdt).timestamp())
 
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.executemany(
-            "INSERT INTO records (type, value_text, start_date, end_date, start_local_date) "
-            "VALUES ('HKCategoryTypeIdentifierSleepAnalysis', "
-            "'HKCategoryValueSleepAnalysisAsleepCore', ?, ?, ?)",
-            [
-                (epoch(30, 22), epoch(31, 0), "2026-07-30"),
-                (epoch(31, 0), epoch(31, 6), "2026-07-31"),
-            ],
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.executemany(
+                "INSERT INTO records (type, value_text, start_date, end_date, start_local_date) "
+                "VALUES ('HKCategoryTypeIdentifierSleepAnalysis', "
+                "'HKCategoryValueSleepAnalysisAsleepCore', ?, ?, ?)",
+                [
+                    (epoch(30, 22), epoch(31, 0), "2026-07-30"),
+                    (epoch(31, 0), epoch(31, 6), "2026-07-31"),
+                ],
+            )
 
         body = client.get("/api/overview?start=2026-08-05&end=2026-08-10").json()
         assert body["previous_range"] == {"start": "2026-07-30", "end": "2026-08-04"}
@@ -874,14 +868,13 @@ class TestOverview:
         assert body["previous_withheld"] == "partial_day"
 
     def test_stored_data_span_is_used_instead_of_computing_it_live(self, client, seeded_db_path):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        # Deliberately not the live answer (2026-03-10), so a still-present comparison
-        # proves the stored key was read rather than the full-scan query.
-        conn.executemany(
-            "INSERT INTO ingest_meta (key, value) VALUES (?, ?)",
-            [("earliest_date", "2026-01-01"), ("latest_date", "2026-08-10")],
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            # Deliberately not the live answer (2026-03-10), so a still-present comparison
+            # proves the stored key was read rather than the full-scan query.
+            conn.executemany(
+                "INSERT INTO ingest_meta (key, value) VALUES (?, ?)",
+                [("earliest_date", "2026-01-01"), ("latest_date", "2026-08-10")],
+            )
         body = client.get("/api/overview?start=2026-03-10&end=2026-03-20").json()
         assert body["previous"] is not None
 
@@ -902,19 +895,19 @@ class TestMeta:
     def test_stored_latest_date_is_returned_instead_of_computing_it_live(
         self, client, seeded_db_path
     ):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        # Deliberately not the live answer (2026-08-10), so getting it back proves the
-        # stored key was used rather than the full-scan query.
-        conn.execute("INSERT INTO ingest_meta (key, value) VALUES ('latest_date', '2030-01-01')")
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            # Deliberately not the live answer (2026-08-10), so getting it back proves the
+            # stored key was used rather than the full-scan query.
+            conn.execute(
+                "INSERT INTO ingest_meta (key, value) VALUES ('latest_date', '2030-01-01')"
+            )
         assert client.get("/api/meta").json()["latest_date"] == "2030-01-01"
 
     def test_stored_empty_latest_date_is_null_not_a_live_fallback(self, client, seeded_db_path):
         # Ingest stores "" when there was no dated data. That's a real answer, not a missing
         # key, so it must not fall back to the live query (which here would find data).
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute("INSERT INTO ingest_meta (key, value) VALUES ('latest_date', '')")
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute("INSERT INTO ingest_meta (key, value) VALUES ('latest_date', '')")
         assert client.get("/api/meta").json()["latest_date"] is None
 
     def test_a_workout_newer_than_every_record_sets_latest_date(self, client):
@@ -926,24 +919,23 @@ class TestMeta:
         assert response.json()["latest_date"] == "2026-08-10"
 
     def test_latest_date_is_the_newest_record_when_records_are_newest(self, client, seeded_db_path):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute(
-            "INSERT INTO records (type, value_num, unit, start_date, end_date, start_local_date) "
-            "VALUES ('HKQuantityTypeIdentifierStepCount', 10, 'count', 0, 0, '2026-08-15')"
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute(
+                "INSERT INTO records "
+                "(type, value_num, unit, start_date, end_date, start_local_date) "
+                "VALUES ('HKQuantityTypeIdentifierStepCount', 10, 'count', 0, 0, '2026-08-15')"
+            )
         assert client.get("/api/meta").json()["latest_date"] == "2026-08-15"
 
     def test_an_ecg_newer_than_everything_else_sets_latest_date(self, client, seeded_db_path):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        # recorded_date (the indexed epoch) is what picks the newest recording; its
-        # recorded_local_date is what's reported.
-        conn.execute(
-            "INSERT INTO ecg_recordings (recorded_date, recorded_local_date, sample_rate, "
-            "sample_count, samples_json, source_file) "
-            "VALUES (1787000000, '2026-08-17', 512, 0, '[]', 'ecg_2026-08-17.csv')"
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            # recorded_date (the indexed epoch) is what picks the newest recording; its
+            # recorded_local_date is what's reported.
+            conn.execute(
+                "INSERT INTO ecg_recordings (recorded_date, recorded_local_date, sample_rate, "
+                "sample_count, samples_json, source_file) "
+                "VALUES (1787000000, '2026-08-17', 512, 0, '[]', 'ecg_2026-08-17.csv')"
+            )
         assert client.get("/api/meta").json()["latest_date"] == "2026-08-17"
 
     def test_ingested_at_is_null_when_ingest_never_wrote_it(self, client):
@@ -952,16 +944,16 @@ class TestMeta:
         assert client.get("/api/meta").json()["ingested_at"] is None
 
     def test_ingested_at_is_read_from_ingest_meta_as_an_epoch(self, client, seeded_db_path):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute("INSERT INTO ingest_meta (key, value) VALUES ('ingested_at', '1787242117')")
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute(
+                "INSERT INTO ingest_meta (key, value) VALUES ('ingested_at', '1787242117')"
+            )
         assert client.get("/api/meta").json()["ingested_at"] == 1787242117
 
     def test_empty_tables_return_null_latest_date(self, client, seeded_db_path):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        for table in ("records", "workouts", "ecg_recordings"):
-            conn.execute(f"DELETE FROM {table}")
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            for table in ("records", "workouts", "ecg_recordings"):
+                conn.execute(f"DELETE FROM {table}")
         assert client.get("/api/meta").json()["latest_date"] is None
 
 
@@ -978,14 +970,14 @@ class TestPartialBuckets:
 
     @staticmethod
     def _add_steps(db_path, *local_dates):
-        conn = db_module.connect(db_path, isolation_level=None)
-        conn.executemany(
-            "INSERT INTO records (type, value_num, unit, start_date, end_date, start_local_date) "
-            "VALUES ('HKQuantityTypeIdentifierStepCount', 100, 'count', ?, ?, ?)",
-            # Distinct, non-overlapping epochs so dedup keeps every row.
-            [(i * 1000, i * 1000 + 10, d) for i, d in enumerate(local_dates, start=1)],
-        )
-        checkpoint_and_close(conn)
+        with writing(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO records "
+                "(type, value_num, unit, start_date, end_date, start_local_date) "
+                "VALUES ('HKQuantityTypeIdentifierStepCount', 100, 'count', ?, ?, ?)",
+                # Distinct, non-overlapping epochs so dedup keeps every row.
+                [(i * 1000, i * 1000 + 10, d) for i, d in enumerate(local_dates, start=1)],
+            )
 
     @staticmethod
     def _partial(response) -> dict:
@@ -1096,12 +1088,11 @@ class TestPartialBuckets:
             assert all("partial" not in p for p in points)
 
     def test_stored_latest_date_drives_in_progress(self, client, seeded_db_path):
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.executemany(
-            "INSERT INTO ingest_meta (key, value) VALUES (?, ?)",
-            [("earliest_date", "2026-03-10"), ("latest_date", "2026-08-05")],
-        )
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.executemany(
+                "INSERT INTO ingest_meta (key, value) VALUES (?, ?)",
+                [("earliest_date", "2026-03-10"), ("latest_date", "2026-08-05")],
+            )
         # Not the live answer (08-10), so this proves the stored key was used.
         partial = self._partial(client.get(f"{self.STEPS}?bucket=day"))
         assert partial["2026-08-05"] == "in_progress"
@@ -1119,9 +1110,8 @@ class TestPartialBuckets:
     def test_live_span_is_cached_per_ingest(self, client, seeded_db_path):
         # A database from `pomona ingest` that predates the stored span keys: the live
         # result is cached against its ingested_at, and a new ingest (new ingested_at) misses.
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute("INSERT INTO ingest_meta (key, value) VALUES ('ingested_at', '1')")
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute("INSERT INTO ingest_meta (key, value) VALUES ('ingested_at', '1')")
         assert self._partial(client.get(f"{self.STEPS}?bucket=day"))["2026-08-05"] is None
 
         self._add_steps(seeded_db_path, "2026-08-20")
@@ -1129,9 +1119,8 @@ class TestPartialBuckets:
         # as past the data's end rather than as the day in progress.
         assert self._partial(client.get(f"{self.STEPS}?bucket=day"))["2026-08-20"] == "truncated"
 
-        conn = db_module.connect(seeded_db_path, isolation_level=None)
-        conn.execute("UPDATE ingest_meta SET value = '2' WHERE key = 'ingested_at'")
-        checkpoint_and_close(conn)
+        with writing(seeded_db_path) as conn:
+            conn.execute("UPDATE ingest_meta SET value = '2' WHERE key = 'ingested_at'")
         assert self._partial(client.get(f"{self.STEPS}?bucket=day"))["2026-08-20"] == "in_progress"
 
 
