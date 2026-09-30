@@ -195,6 +195,12 @@ class DayShape:
         self.fitness = 0.5 + 0.5 * day_index / max(total, 1) - (0.15 if self.is_quiet_week else 0)
         self.rng = rng
 
+    def at(self, hour: int, minute: int = 0) -> datetime:
+        """That time on this day, in local wall-clock terms."""
+        return datetime(self.day.year, self.day.month, self.day.day) + timedelta(
+            hours=hour, minutes=minute
+        )
+
 
 def steps_by_hour(shape: DayShape) -> list[tuple[int, int]]:
     """An hourly step profile: a commute, a lunch walk, an evening, and not much overnight."""
@@ -285,18 +291,12 @@ class ExportWriter:
         self.dates_with_records.add(start.strftime("%Y-%m-%d"))
 
 
-def write_day_records(
-    w: ExportWriter, shape: DayShape, day_index: int, total: int, is_last_day: bool
-) -> int:
-    """Every Record element for one day."""
+def _write_activity(w: ExportWriter, shape: DayShape, day_index: int, total: int) -> int:
+    """Steps, distance, energy, exercise and stand time. Returns the day's step count."""
     rng = shape.rng
     offset = shape.offset
-    midnight = datetime(shape.day.year, shape.day.month, shape.day.day)
+    at = shape.at
 
-    def at(hour: int, minute: int = 0) -> datetime:
-        return midnight + timedelta(hours=hour, minutes=minute)
-
-    # --- Activity -----------------------------------------------------------------------
     hourly_steps = steps_by_hour(shape)
     for hour, value in hourly_steps:
         # Both devices log the morning, overlapping on purpose: this is the case dedup exists
@@ -416,8 +416,15 @@ def write_day_records(
             end=at(hour + 1),
             offset=offset,
         )
+    return day_steps
 
-    # --- Heart --------------------------------------------------------------------------
+
+def _write_heart(w: ExportWriter, shape: DayShape, day_index: int) -> None:
+    """Heart rate through the day, resting and walking averages, HRV, breathing, SpO2, VO2 max."""
+    rng = shape.rng
+    offset = shape.offset
+    at = shape.at
+
     for slot in range(30):
         hour = 6 + slot * 17 // 30
         # Resting-ish overnight and early, higher through the day, spiking around workouts.
@@ -478,7 +485,15 @@ def write_day_records(
             offset=offset,
         )
 
-    # --- Mobility, gait, body, environment ----------------------------------------------
+
+def _write_body_and_environment(
+    w: ExportWriter, shape: DayShape, day_index: int, total: int
+) -> None:
+    """Mobility and gait, body measurements and environment: the slow or occasional types."""
+    rng = shape.rng
+    offset = shape.offset
+    at = shape.at
+
     w.record(
         "HKQuantityTypeIdentifierWalkingSpeed",
         round(rng.uniform(4.6, 5.6), 3),
@@ -618,7 +633,13 @@ def write_day_records(
             source=IPHONE,
         )
 
-    # --- Sleep and mindfulness ----------------------------------------------------------
+
+def _write_sleep_and_mindfulness(w: ExportWriter, shape: DayShape, is_last_day: bool) -> None:
+    """The night that starts this evening, and sometimes a mindful session."""
+    rng = shape.rng
+    offset = shape.offset
+    at = shape.at
+
     # A night begins at ~22:00 and runs past midnight, which is what real sleep does and what
     # the aggregation has to handle. Skipped on the final day only: those later stages would
     # start after midnight and put records a day beyond the requested --end-date, making the
@@ -655,7 +676,13 @@ def write_day_records(
             source=IPHONE,
         )
 
-    # --- Blood pressure, as the Correlation the export actually uses --------------------
+
+def _write_blood_pressure(w: ExportWriter, shape: DayShape, day_index: int) -> None:
+    """Every fourth day, as the Correlation the export actually uses."""
+    rng = shape.rng
+    offset = shape.offset
+    at = shape.at
+
     if day_index % 4 == 0:
         systolic = int(rng.gauss(119, 7))
         when = hk(at(7, 40), offset)
@@ -691,6 +718,21 @@ def write_day_records(
             )
         w.line(" </Correlation>")
 
+
+def write_day_records(
+    w: ExportWriter, shape: DayShape, day_index: int, total: int, is_last_day: bool
+) -> int:
+    """Every Record element for one day. Returns the day's step count.
+
+    The sections run in a fixed order and all draw from the day's one shared RNG, so the order
+    is part of the output: reordering them changes every value after the move, and the same
+    seed would no longer give the same export.
+    """
+    day_steps = _write_activity(w, shape, day_index, total)
+    _write_heart(w, shape, day_index)
+    _write_body_and_environment(w, shape, day_index, total)
+    _write_sleep_and_mindfulness(w, shape, is_last_day)
+    _write_blood_pressure(w, shape, day_index)
     return day_steps
 
 

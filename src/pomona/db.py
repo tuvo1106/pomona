@@ -174,6 +174,13 @@ def _exec_statements(conn: sqlite3.Connection, sql_block: str) -> None:
 RETIRED_VIEWS = ["daily_resting_hr", "daily_weight"]
 
 
+def insert_sql(table: str, columns: list[str], *, or_replace: bool = False) -> str:
+    """A parameterised INSERT of `columns` into `table`, for the ingest loaders' executemany."""
+    placeholders = ",".join("?" * len(columns))
+    verb = "INSERT OR REPLACE INTO" if or_replace else "INSERT INTO"
+    return f"{verb} {table} ({','.join(columns)}) VALUES ({placeholders})"
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     _exec_statements(conn, SCHEMA)
     for view in RETIRED_VIEWS:

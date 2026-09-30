@@ -14,6 +14,7 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
+from pomona.db import insert_sql
 from pomona.ingest.dates import parse_apple_date
 
 COLUMNS = [
@@ -30,9 +31,7 @@ COLUMNS = [
     "samples_json",
     "source_file",
 ]
-INSERT_SQL = (
-    f"INSERT INTO ecg_recordings ({','.join(COLUMNS)}) VALUES ({','.join('?' * len(COLUMNS))})"
-)
+INSERT_SQL = insert_sql("ecg_recordings", COLUMNS)
 
 
 def _blocks(rows: list[list[str]]) -> Iterator[list[list[str]]]:

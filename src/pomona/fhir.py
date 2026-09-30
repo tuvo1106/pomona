@@ -1,13 +1,20 @@
-"""Flattening a stored FHIR resource into the shapes the clinical page displays.
+"""Reading FHIR resources: the shape-tolerant accessors that ingest and the API both read
+fields through, and the flattening of a stored resource into what the clinical page displays.
 
-Read at request time from `clinical_records.raw_json` rather than extracted into columns at
-ingest, so a new display field needs no schema change and no re-ingest. Every function here
-takes whatever the export contained and treats it as untrusted: a shape it doesn't expect
-yields None, never an exception, because one malformed record must not 500 the whole page.
+Every function here takes whatever the export contained and treats it as untrusted: a shape
+it doesn't expect yields None (or {}), never an exception. At ingest that keeps one odd field
+from aborting the load; at request time it keeps one malformed record from 500ing the page.
+One set of accessors for both, so a field can't read one way when stored and another when
+served.
+
+The flattening is read at request time from `clinical_records.raw_json` rather than
+extracted into columns at ingest, so a new display field needs no schema change and no
+re-ingest.
 """
 
 import json
 import math
+from typing import Any
 
 # The ways a FHIR feed spells "this coding is LOINC". Used to pick the LOINC code out of a
 # component's `coding[]`, which an EHR may fill with codings from several systems. The OID
@@ -15,6 +22,74 @@ import math
 LOINC_SYSTEMS = frozenset(
     {"http://loinc.org", "https://loinc.org", "urn:oid:2.16.840.1.113883.6.1"}
 )
+
+
+# SQLite's INTEGER range. A JSON int outside it can't be bound as one, so as_number reads it
+# as a float instead -- and every value it returns can be both stored and served.
+_SQLITE_INT_MIN, _SQLITE_INT_MAX = -(2**63), 2**63 - 1
+
+
+def as_dict(value: Any) -> dict[str, Any]:
+    """`value` if it's a JSON object, else {} -- so a chain of `.get`s can't raise."""
+    return value if isinstance(value, dict) else {}
+
+
+def first_dict(value: Any) -> dict[str, Any]:
+    """The first element of a JSON array, if it's an object; {} otherwise."""
+    return as_dict(value[0]) if isinstance(value, list) and value else {}
+
+
+def as_str(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def as_nonempty_str(value: Any) -> str | None:
+    """A string with something in it, else None: an empty label or value says nothing."""
+    return value if isinstance(value, str) and value else None
+
+
+def as_number(value: Any) -> int | float | None:
+    """A JSON number the app can store and serve, else None.
+
+    Not a bool, which is an int subclass: a malformed `"value": true` isn't a measurement.
+    Not non-finite: a value like 1e999 parses to inf, which the API's JSON responses can't
+    encode, so one record would 500 the whole clinical page. An int outside SQLite's range
+    comes back as a float, and one too big even for that is None -- converting it would
+    raise, and at ingest that would abort the whole load.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    if isinstance(value, int) and not _SQLITE_INT_MIN <= value <= _SQLITE_INT_MAX:
+        try:
+            value = float(value)
+        except OverflowError:
+            return None
+    return value if math.isfinite(value) else None
+
+
+def _codings(code: Any) -> list[dict[str, Any]]:
+    """A CodeableConcept's `coding[]` entries that are objects."""
+    coding = as_dict(code).get("coding")
+    return [c for c in coding if isinstance(c, dict)] if isinstance(coding, list) else []
+
+
+def code_label(code: Any, codings: list[dict[str, Any]] | None = None) -> str | None:
+    """A CodeableConcept's human-readable name: its `text`, else the first coding that has
+    a `display`. Empty strings are skipped, since they name nothing. Every coding in one
+    CodeableConcept codes the same concept, so a later coding's display names it as well as
+    the first's would. `codings` is `_codings(code)`, for a caller that already has it.
+    """
+    if codings is None:
+        codings = _codings(code)
+    return as_nonempty_str(as_dict(code).get("text")) or next(
+        (display for c in codings if (display := as_nonempty_str(c.get("display")))),
+        None,
+    )
+
+
+def first_code(code: Any) -> str | None:
+    """The code of a CodeableConcept's first coding that has one."""
+    return next((value for c in _codings(code) if (value := as_nonempty_str(c.get("code")))), None)
 
 
 def parse_resource(raw_json: str | None) -> dict | None:
@@ -62,15 +137,8 @@ def components(resource: dict | None) -> list[dict] | None:
         if not isinstance(component, dict):
             continue
         code = component.get("code")
-        code = code if isinstance(code, dict) else {}
-        coding = code.get("coding")
-        codings = [c for c in coding if isinstance(c, dict)] if isinstance(coding, list) else []
-        label = code.get("text")
-        if not _nonempty_str(label):
-            label = next(
-                (c["display"] for c in codings if _nonempty_str(c.get("display"))),
-                None,
-            )
+        codings = _codings(code)
+        label = code_label(code, codings)
         loinc = next(
             (
                 c["code"]
@@ -80,9 +148,7 @@ def components(resource: dict | None) -> list[dict] | None:
             None,
         )
         value_num, value_unit = _quantity(component.get("valueQuantity"))
-        value_text = component.get("valueString")
-        if not _nonempty_str(value_text):
-            value_text = None
+        value_text = as_nonempty_str(component.get("valueString"))
         if label is None and value_num is None and value_text is None:
             continue
         flattened.append(
@@ -99,41 +165,25 @@ def components(resource: dict | None) -> list[dict] | None:
 
 
 def _flatten_range(ranges: object) -> dict | None:
-    if not isinstance(ranges, list) or not ranges or not isinstance(ranges[0], dict):
-        return None
-    first = ranges[0]
+    first = first_dict(ranges)
     # A FHIR range bound is a SimpleQuantity, so it's read the same way as a value.
     low, low_unit = _quantity(first.get("low"))
     high, high_unit = _quantity(first.get("high"))
-    text = first.get("text") if isinstance(first.get("text"), str) else None
+    text = as_str(first.get("text"))
     if low is None and high is None and text is None:
         return None
     return {"low": low, "high": high, "unit": low_unit or high_unit, "text": text}
 
 
 def _quantity(quantity: object) -> tuple[float | None, str | None]:
-    """A FHIR Quantity's numeric value and unit, or (None, None) if it isn't one."""
-    if not isinstance(quantity, dict):
+    """A FHIR Quantity's numeric value and unit, or (None, None) if it has no usable value.
+
+    The unit goes with the value here, unlike the ingested columns (which keep a unit as
+    recorded): a displayed part or range bound with no number has nothing for its unit to
+    qualify, and a stray unit would decide which unit a range is compared in.
+    """
+    quantity = as_dict(quantity)
+    value = as_number(quantity.get("value"))
+    if value is None:
         return None, None
-    value = quantity.get("value")
-    if not _is_measurement(value):
-        return None, None
-    unit = quantity.get("unit")
-    return value, unit if isinstance(unit, str) else None
-
-
-def _nonempty_str(value: object) -> bool:
-    return isinstance(value, str) and bool(value)
-
-
-def _is_measurement(value: object) -> bool:
-    # bool is an int subclass -- a malformed `"value": true` isn't a measurement. Nor is a
-    # value like 1e999, which parses to inf: the response can't encode it, and one record
-    # would 500 the whole clinical page. An int too big for a float encodes, but the browser
-    # reads it back as Infinity -- and math.isfinite raises on it rather than answering.
-    if not isinstance(value, int | float) or isinstance(value, bool):
-        return False
-    try:
-        return math.isfinite(value)
-    except OverflowError:
-        return False
+    return value, as_str(quantity.get("unit"))

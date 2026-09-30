@@ -17,10 +17,7 @@ import pytest
 
 from pomona import db
 from pomona.clinical import INGESTED_RESOURCE_TYPES
-from pomona.ingest.clinical_loader import load_clinical_records
-from pomona.ingest.ecg_loader import load_ecg_recordings
-from pomona.ingest.gpx_loader import load_workout_routes
-from pomona.ingest.loader import load_export_xml
+from tests.conftest import ingest_into
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "make_demo_export.py"
 END_DATE = date(2026, 6, 15)
@@ -58,12 +55,13 @@ def demo_export(tmp_path_factory) -> Path:
 def demo_db(demo_export: Path, tmp_path_factory) -> sqlite3.Connection:
     """Ingests it with the same loaders the CLI uses."""
     conn = db.connect(tmp_path_factory.mktemp("demo-db") / "demo.db", isolation_level=None)
-    db.init_schema(conn)
-    load_export_xml(conn, demo_export / "export.xml", show_progress=False)
-    load_clinical_records(conn, demo_export / "clinical-records")
-    load_workout_routes(conn, demo_export / "workout-routes")
-    load_ecg_recordings(conn, demo_export / "electrocardiograms")
-    db.create_indexes(conn)
+    ingest_into(
+        conn,
+        export_xml=demo_export / "export.xml",
+        clinical_dir=demo_export / "clinical-records",
+        routes_dir=demo_export / "workout-routes",
+        ecg_dir=demo_export / "electrocardiograms",
+    )
     return conn
 
 

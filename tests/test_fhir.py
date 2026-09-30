@@ -3,6 +3,59 @@ import pytest
 from pomona import fhir
 
 
+class TestAccessors:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (95, 95),
+            (4.5, 4.5),
+            (True, None),
+            ("95", None),
+            (None, None),
+            (float("inf"), None),
+            (float("nan"), None),
+            (2**63, float(2**63)),
+            (10**400, None),
+        ],
+    )
+    def test_as_number(self, value, expected):
+        assert fhir.as_number(value) == expected
+
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            ({"text": "Text", "coding": [{"display": "Display"}]}, "Text"),
+            ({"text": "", "coding": [{"display": ""}, {"display": "Second"}]}, "Second"),
+            ({"coding": [{"code": "1"}, "junk", {"display": "Later"}]}, "Later"),
+            ({"text": ""}, None),
+            ("not an object", None),
+            ({"coding": 7}, None),
+        ],
+    )
+    def test_code_label(self, code, expected):
+        assert fhir.code_label(code) == expected
+
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            ({"coding": [{"code": "a"}, {"code": "b"}]}, "a"),
+            ({"coding": [{"display": "x"}, {"code": ""}, {"code": "c"}]}, "c"),
+            ({"text": "only text"}, None),
+            (None, None),
+        ],
+    )
+    def test_first_code(self, code, expected):
+        assert fhir.first_code(code) == expected
+
+    def test_shape_helpers(self):
+        assert fhir.as_dict([1]) == {}
+        assert fhir.first_dict([{"a": 1}, {"b": 2}]) == {"a": 1}
+        assert fhir.first_dict(["x"]) == {}
+        assert fhir.first_dict([]) == {}
+        assert fhir.as_str(5) is None
+        assert fhir.as_nonempty_str("") is None
+
+
 class TestParseResource:
     def test_malformed_json_is_none(self):
         # Both range and component parsing go through parse_resource, which is where a stored
