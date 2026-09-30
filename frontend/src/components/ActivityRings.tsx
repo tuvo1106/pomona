@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/api/client'
 import { ActivityHeatmap } from '@/components/ActivityHeatmap'
 import { ActivityRingsGlyph, ActivityRingsLegend } from '@/components/ActivityRingsGlyph'
 import { ShowAllRows } from '@/components/ShowAllRows'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useActivitySummary } from '@/hooks/queries'
 import { useContentFade } from '@/lib/transitions'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useRowPreview } from '@/hooks/useRowPreview'
@@ -28,10 +27,7 @@ import type { DateRange } from '@/lib/timeRange'
 const PREVIEW_ROWS = 14
 
 export function ActivityRings({ range }: { range: DateRange }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['activity-summary', range],
-    queryFn: () => api.activitySummary(range),
-  })
+  const { data, isLoading, error } = useActivitySummary(range)
   const [view, setView] = useState<'rings' | 'table'>('rings')
 
   const rows = useMemo(() => data ?? [], [data])

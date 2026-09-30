@@ -1,8 +1,8 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { DataCard } from '@/components/DataCard'
+import { useRunningMileage } from '@/hooks/queries'
 import { useBucketDates } from '@/hooks/useBucketedChart'
-import { useRunningMileage } from '@/hooks/useWorkouts'
 import {
   CHART_ANIMATION_DURATION,
   CHART_BAR_RADIUS,

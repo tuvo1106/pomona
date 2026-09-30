@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
-  api,
   type ClinicalRecord,
   type DiagnosticReportResult,
   type ObservationComponent,
@@ -10,6 +8,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useClinical } from '@/hooks/queries'
 import { useContentFade } from '@/lib/transitions'
 import {
   Table,
@@ -504,10 +503,7 @@ function ClinicalSection({
 }
 
 export function ClinicalPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['clinical', 'all'],
-    queryFn: () => api.clinical({}),
-  })
+  const { data, isLoading, error } = useClinical()
   const fade = useContentFade(isLoading)
   const [filter, setFilter] = useState('')
   const needle = filter.trim().toLowerCase()

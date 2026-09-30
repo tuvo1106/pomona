@@ -6,7 +6,7 @@ import { ChartLegend, type LegendEntry } from '@/components/ChartLegend'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
-import { useBloodPressure } from '@/hooks/useBloodPressure'
+import { useBloodPressure } from '@/hooks/queries'
 import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { axisScale } from '@/lib/axisScale'
@@ -43,7 +43,7 @@ export function BloodPressureChart({
 }) {
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog
-  const { data, isLoading, error } = useBloodPressure(range, bucket)
+  const { data, isLoading, error } = useBloodPressure(range, { bucket })
   const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
     data?.points,
     bucket,

@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import { api, type MetricTypeInfo } from '@/api/client'
+import type { MetricTypeInfo } from '@/api/client'
 import { DataCard } from '@/components/DataCard'
 import { ShowAllRows } from '@/components/ShowAllRows'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useMetricTypes } from '@/hooks/queries'
 import { useRowPreview } from '@/hooks/useRowPreview'
 import { formatFullDate } from '@/lib/formatDate'
 import { friendlyName } from '@/lib/metricNames'
@@ -17,10 +17,7 @@ const NO_METRICS: MetricTypeInfo[] = []
 const PREVIEW_ROWS = 10
 
 export function AllMetrics() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['metric-types', 'all-time'],
-    queryFn: () => api.metricTypes(),
-  })
+  const { data, isLoading, error } = useMetricTypes()
   const metrics = data ?? NO_METRICS
   const { visibleRows, hiddenCount, totalCount, isExpanded, toggle } = useRowPreview(
     metrics,

@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
-import { api } from '@/api/client'
 import { ActivityRings } from '@/components/ActivityRings'
 import { AllCharts } from '@/components/AllCharts'
 import { AllMetrics } from '@/components/AllMetrics'
@@ -14,6 +12,7 @@ import { TimeRangeSelect } from '@/components/TimeRangeSelect'
 import { WorkoutsList } from '@/components/WorkoutsList'
 import { WorkoutsSummary } from '@/components/WorkoutsSummary'
 import { Button } from '@/components/ui/button'
+import { useMetricTypes } from '@/hooks/queries'
 import { useAnchoredRange } from '@/hooks/useAnchoredRange'
 import { useExpandedGroups } from '@/hooks/useExpandedGroups'
 import { useSearchParamState } from '@/hooks/useSearchParamState'
@@ -53,20 +52,7 @@ export function DashboardPage() {
     data: metricTypes,
     isLoading: groupsLoading,
     error: groupsError,
-  } = useQuery({
-    queryKey: ['metric-types', range],
-    queryFn: () => api.metricTypes(range),
-    enabled: ready,
-    // Keep the previous range's groups on screen while the new ones load. Without this,
-    // every range change tore the whole Trends region down to six skeletons and rebuilt it
-    // -- forty cards and their section headings, a several-thousand-pixel collapse and
-    // re-expansion -- which no amount of fading the individual cards back in can soften.
-    // Safe to show stale here in a way it wouldn't be for the overview: this query returns
-    // which metric types exist, not any of their values, so the worst case is a card that
-    // appears and then goes away because the new range has no data for it. Each chart's own
-    // query still reloads underneath, with its own skeleton.
-    placeholderData: keepPreviousData,
-  })
+  } = useMetricTypes(range, { enabled: ready })
 
   const groups = useMemo(
     () => (metricTypes ? presentGroups(metricTypes.map((metric) => metric.type)) : []),

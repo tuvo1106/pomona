@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useDataMeta } from '@/hooks/useAnchoredRange'
+import { useDataMeta } from '@/hooks/queries'
 import {
   bucketForRange,
   computeDateRange,

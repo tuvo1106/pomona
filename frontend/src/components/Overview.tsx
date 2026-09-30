@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
-import { api, type Overview as OverviewData, type OverviewStats } from '@/api/client'
+import type { Overview as OverviewData, OverviewStats } from '@/api/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useOverview } from '@/hooks/queries'
 import { CONTENT_FADE_IN } from '@/lib/transitions'
 import { formatFullDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
@@ -274,10 +274,7 @@ export function OverviewSkeleton() {
 }
 
 export function Overview({ range }: { range: DateRange }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['overview', range],
-    queryFn: () => api.overview(range),
-  })
+  const { data, isLoading, error } = useOverview(range)
 
   if (isLoading) return <OverviewSkeleton />
   if (error) return <div className="text-destructive text-sm">Failed to load overview.</div>

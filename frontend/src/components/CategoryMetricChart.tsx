@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   Bar,
   BarChart,
@@ -9,11 +8,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type CategoryMetricMode } from '@/api/client'
+import type { CategoryMetricMode } from '@/api/client'
 import { barEndLabel } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
+import { useCategoryMetricTimeseries } from '@/hooks/queries'
 import { DATE_COLUMN, timeseriesCells, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { axisScale } from '@/lib/axisScale'
@@ -54,10 +54,9 @@ export function CategoryMetricChart({
 }: CategoryMetricChartProps) {
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog
-  const params = { ...range, bucket, value_prefix: valuePrefix }
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['category-metric-timeseries', metricType, mode, params],
-    queryFn: () => api.categoryMetricTimeseries(metricType, mode, params),
+  const { data, isLoading, error } = useCategoryMetricTimeseries(metricType, mode, range, {
+    bucket,
+    valuePrefix,
   })
   const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
     data?.points,

@@ -14,9 +14,9 @@ import { makeLineEndDot, makePartialDot } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
+import { useMetricTimeseries } from '@/hooks/queries'
 import { DATE_COLUMN, timeseriesCells, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
-import { useMetricTimeseries } from '@/hooks/useMetricTimeseries'
 import { axisScale } from '@/lib/axisScale'
 import {
   CHART_ANIMATION_DURATION,
@@ -68,7 +68,7 @@ export function MetricChart({
   // dashboard; while it's closed these are the dashboard's own (see useChartDialog).
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog
-  const { data, isLoading, error } = useMetricTimeseries(metricType, { ...range, bucket })
+  const { data, isLoading, error } = useMetricTimeseries(metricType, range, { bucket })
   const label = title ?? friendlyName(metricType)
 
   const displayPoints = useMemo(
