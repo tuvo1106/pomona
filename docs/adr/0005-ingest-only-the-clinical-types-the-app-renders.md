@@ -77,8 +77,8 @@ title that give it somewhere to go.
 
 Adding a type means touching four places: `INGESTED_RESOURCE_TYPES`, `EXTRACTORS` in
 `ingest/clinical_loader.py`, and `SECTION_ORDER` plus `SECTION_TITLES` in
-`pages/ClinicalPage.tsx`. That is the intended friction, and the page's comment points at the
-allowlist so the connection isn't guesswork.
+`frontend/src/lib/clinicalText.ts`. That is the intended friction, and the comment on
+`SECTION_ORDER` points at the allowlist so the connection isn't guesswork.
 
 `EXTRACTORS` is the one that bites if it is missed, and it is checked rather than documented:
 `clinical_loader.py` compares the two sets at import and raises if they disagree, because a type

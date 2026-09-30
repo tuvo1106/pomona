@@ -1,6 +1,6 @@
 import { DataCard } from '@/components/DataCard'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useWorkoutsSummary } from '@/hooks/useWorkouts'
+import { useWorkoutsSummary } from '@/hooks/queries'
 import { activityIcon, formatActivityType } from '@/lib/activityType'
 import { formatDuration } from '@/lib/duration'
 import type { DateRange } from '@/lib/timeRange'

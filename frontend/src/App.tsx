@@ -6,7 +6,7 @@ import { ErrorBoundary, PageErrorFallback } from '@/components/ErrorBoundary'
 import { NoDatabase } from '@/components/NoDatabase'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { useDataMeta } from '@/hooks/useAnchoredRange'
+import { useDataMeta } from '@/hooks/queries'
 import { navSearch } from '@/hooks/useSearchParamState'
 import { cn } from '@/lib/utils'
 

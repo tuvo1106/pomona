@@ -5,9 +5,9 @@ import { barEndLabel } from '@/components/ChartEndLabels'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
+import { useSleep } from '@/hooks/queries'
 import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
-import { useSleep } from '@/hooks/useSleep'
 import { axisScale } from '@/lib/axisScale'
 import {
   CHART_ANIMATION_DURATION,
@@ -38,7 +38,7 @@ export function SleepChart({
 }) {
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog
-  const { data, isLoading, error } = useSleep(range, bucket)
+  const { data, isLoading, error } = useSleep(range, { bucket })
   const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
     data?.points,
     bucket,

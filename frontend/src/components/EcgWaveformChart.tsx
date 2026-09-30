@@ -4,7 +4,7 @@ import type { EcgPoint } from '@/api/client'
 import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ClassificationTag } from '@/components/ClassificationTag'
-import { useEcgRecording } from '@/hooks/useEcg'
+import { useEcgRecording } from '@/hooks/queries'
 import { CHART_AXIS_STROKE, CHART_AXIS_TICK } from '@/lib/chartStyle'
 import {
   PAPER_SECONDS_MAJOR,

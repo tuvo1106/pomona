@@ -125,6 +125,6 @@ These look like inconsistencies but are deliberate, each documented at the cited
   pair under deuteranopia -- a simulation that says otherwise is misapplying its matrices).
 - **Map tiles must be free, keyless, account-less**
   ([ADR-0004](adr/0004-openstreetmap-tiles-for-routes-map.md)).
-- **Clinical dates render in UTC** (`ClinicalPage.tsx:37`).
+- **Clinical dates render in UTC** (`formatClinicalDate` in `lib/clinicalText.ts`).
 - **No schema migrations** — if a change needs a `SCHEMA` change, read the "Database schema"
   section of AGENTS.md first. No frontend work so far has needed one.

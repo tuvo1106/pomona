@@ -1,23 +1,7 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/api/client'
+import { useDataMeta } from '@/hooks/queries'
 import { useRangeParams } from '@/hooks/useSearchParamState'
 import { computeDateRange, type RangeOption } from '@/lib/timeRange'
-
-export function useDataMeta() {
-  return useQuery({
-    queryKey: ['meta'],
-    queryFn: api.meta,
-    // Every page's data queries wait on this one (see `ready` below). react-query's default
-    // of 3 retries with backoff would hold them on skeletons for ~7s when it fails -- e.g.
-    // the 503 for a missing database -- instead of letting each page show its error.
-    retry: false,
-    // Default staleTime (0) plus refetch-on-focus, like the data queries: after a re-ingest
-    // and server restart, an already-open tab picks up the new anchor when it's refocused
-    // rather than hiding the new data until a reload. A refetch that returns the same date
-    // changes nothing, so it doesn't re-fire the data queries.
-  })
-}
 
 /** Range-picker state plus the resolved {start, end}, with the relative ranges anchored to
  * the newest date that has data (see computeDateRange).
