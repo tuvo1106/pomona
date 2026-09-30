@@ -169,7 +169,7 @@ function specTypes(spec: ChartSpec): string[] {
 export const KNOWN_TYPES = new Set(METRIC_GROUPS.flatMap((g) => g.charts.flatMap(specTypes)))
 
 /** Apple's own naming convention reliably distinguishes the two: HKCategoryTypeIdentifier*
- * records never carry a numeric value_num (see api/dashboard.py's category_metric_timeseries),
+ * records never carry a numeric value_num (see api/metrics.py's category_metric_timeseries),
  * while everything else (HKQuantityTypeIdentifier*, HKDataType*) does. An unrecognized quantity
  * type can safely reuse the generic line-chart spec; an unrecognized category type needs the
  * count-mode bar chart instead, or it would route through /api/metrics/{type}/timeseries (which

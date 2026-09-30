@@ -2,7 +2,7 @@
  *
  * Everything here answers the same question the em dash answers elsewhere in the UI: what
  * to print when the number isn't there. A route whose workout didn't match gets null
- * distance and duration from the API (a LEFT join -- see api/dashboard.py), and null is
+ * distance and duration from the API (a LEFT join -- see api/workouts.py), and null is
  * *unknown*, not zero: "0.0 mi" reads as a real measurement of standing still. So a missing
  * input gives a missing output, never a computed-from-nothing one.
  */

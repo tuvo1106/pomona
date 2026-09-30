@@ -40,7 +40,7 @@ Two layers apply it, and both are load-bearing:
 
 - `ingest/clinical_loader.py` keeps only allowlisted types, before anything downstream sees
   them — including the `DiagnosticReport` reference map built from the same set.
-- `api/dashboard.py` serves only `INGESTED_RESOURCE_TYPES`, as a SQL `IN` rather than a
+- `api/clinical_records.py` serves only `INGESTED_RESOURCE_TYPES`, as a SQL `IN` rather than a
   `NOT IN`, reading that same constant rather than repeating it. This matters separately:
   a database built before a type left the list still holds those rows until the next
   drop-and-reload, and this is what stops them being served in the meantime.

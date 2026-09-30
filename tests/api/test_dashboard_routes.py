@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from pomona import db as db_module
-from pomona.api import dashboard
+from pomona.api import query
 from pomona.clinical import INGESTED_RESOURCE_TYPES
 from tests.conftest import checkpoint_and_close
 
@@ -1148,4 +1148,4 @@ class TestBucketLastDay:
     )
     def test_last_day_of_bucket(self, first, bucket, last):
         first_day = datetime.fromisoformat(first).date()
-        assert dashboard._bucket_last_day(first_day, bucket).isoformat() == last
+        assert query.bucket_last_day(first_day, bucket).isoformat() == last

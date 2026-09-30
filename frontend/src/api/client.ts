@@ -8,8 +8,8 @@ export interface MetricTypeInfo {
   max_date: string
 }
 
-/** Why a bucket only covers part of its period (see `_mark_partial_buckets` in
- * api/dashboard.py): it holds the newest data date, assumed still in progress, or the date
+/** Why a bucket only covers part of its period (see `mark_partial_buckets` in
+ * api/query.py): it holds the newest data date, assumed still in progress, or the date
  * range cuts it off. Only cumulative series are marked -- partial sums read as a false dip.
  */
 export type PartialKind = 'in_progress' | 'truncated'
