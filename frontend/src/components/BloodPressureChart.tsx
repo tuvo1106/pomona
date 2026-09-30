@@ -7,6 +7,7 @@ import { ChartStateWrapper } from '@/components/ChartStateWrapper'
 import { ChartTooltip } from '@/components/ChartTooltip'
 import { ExpandableChartCard } from '@/components/ExpandableChartCard'
 import { useBloodPressure } from '@/hooks/useBloodPressure'
+import { DATE_COLUMN, useBucketedChart } from '@/hooks/useBucketedChart'
 import { useChartDialog } from '@/hooks/useChartDialog'
 import { axisScale } from '@/lib/axisScale'
 import {
@@ -15,13 +16,16 @@ import {
   CHART_X_AXIS_PROPS,
   CHART_Y_AXIS_PROPS,
 } from '@/lib/chartStyle'
-import { formatBucketDate, makeDateLabelFormatter, makeDateTickFormatter } from '@/lib/formatDate'
 import { formatAxisNumber } from '@/lib/formatNumber'
 import { displayMean, seriesStats, type StatEntry } from '@/lib/seriesStats'
 import type { Bucket, DateRange } from '@/lib/timeRange'
 
-// Stable fallback so the memos below don't recompute on every render while loading.
-const NO_POINTS: BloodPressurePoint[] = []
+function bloodPressureCells(point: BloodPressurePoint) {
+  return {
+    systolic: point.systolic != null ? formatAxisNumber(point.systolic) : '—',
+    diastolic: point.diastolic != null ? formatAxisNumber(point.diastolic) : '—',
+  }
+}
 
 // Systolic first: it's the number read first when a pressure is spoken or written ("120
 // over 80"), and it's the upper line on the chart, so the legend matches both.
@@ -40,7 +44,11 @@ export function BloodPressureChart({
   const dialog = useChartDialog(dashboardRange, dashboardBucket)
   const { range, bucket } = dialog
   const { data, isLoading, error } = useBloodPressure(range, bucket)
-  const points = data?.points ?? NO_POINTS
+  const { points, tickFormatter, labelFormatter, tableRows } = useBucketedChart(
+    data?.points,
+    bucket,
+    bloodPressureCells,
+  )
   const scale = useMemo(
     () =>
       axisScale(
@@ -57,20 +65,6 @@ export function BloodPressureChart({
   const diastolicEndDot = useMemo(
     () => makeLineEndDot('var(--bp-diastolic)', points.length - 1),
     [points.length],
-  )
-  const tickFormatter = useMemo(
-    () => makeDateTickFormatter(points.map((p) => p.date), bucket),
-    [points, bucket],
-  )
-  const labelFormatter = useMemo(() => makeDateLabelFormatter(bucket), [bucket])
-  const tableRows = useMemo(
-    () =>
-      points.map((p) => ({
-        date: formatBucketDate(p.date, bucket),
-        systolic: p.systolic != null ? formatAxisNumber(p.systolic) : '—',
-        diastolic: p.diastolic != null ? formatAxisNumber(p.diastolic) : '—',
-      })),
-    [points, bucket],
   )
 
   // Two series, so the strip reports each one's spread separately rather than pairing the
@@ -107,7 +101,7 @@ export function BloodPressureChart({
       dialog={dialog}
       stats={stats}
       tableColumns={[
-        { key: 'date', header: 'Date' },
+        DATE_COLUMN,
         { key: 'systolic', header: 'Systolic', numeric: true },
         { key: 'diastolic', header: 'Diastolic', numeric: true },
       ]}
