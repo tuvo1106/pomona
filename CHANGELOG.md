@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Running in {year}** — a dashboard card with running distance and run count since January 1,
+  against the same days last year. Independent of the range picker, and anchored to the newest
+  date in the data rather than today.
+
 ## [0.1.0] - 2026-09-25
 
 First public release. Pomona reads an Apple Health export into a local SQLite database and

@@ -8,6 +8,7 @@ import { AllMetrics } from '@/components/AllMetrics'
 import { BucketSelect } from '@/components/BucketSelect'
 import { DataFreshness } from '@/components/DataFreshness'
 import { Overview, OverviewSkeleton } from '@/components/Overview'
+import { RunningYtd } from '@/components/RunningYtd'
 import { SectionNav } from '@/components/SectionNav'
 import { TimeRangeSelect } from '@/components/TimeRangeSelect'
 import { WorkoutsList } from '@/components/WorkoutsList'
@@ -177,6 +178,7 @@ export function DashboardPage() {
           </section>
 
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <RunningYtd latestDate={latestDate} />
             <WorkoutsList range={range} />
             <WorkoutsSummary range={range} />
           </section>

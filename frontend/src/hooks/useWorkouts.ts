@@ -10,9 +10,10 @@ export function useWorkouts(range: DateRange, params: { activity_type?: string; 
   })
 }
 
-export function useWorkoutsSummary(range: DateRange) {
+export function useWorkoutsSummary(range: DateRange, enabled = true) {
   return useQuery({
     queryKey: ['workouts-summary', range],
     queryFn: () => api.workoutsSummary(range),
+    enabled,
   })
 }
